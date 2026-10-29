@@ -1,7 +1,7 @@
 # Task Checklist — P2P Payment Ledger
 
 **Status:** IN PROGRESS
-**Last updated:** TASK-002 complete (2026-10-29)
+**Last updated:** TASK-004 complete (2026-10-29)
 **Rule:** Only mark `[x]` after implementation is complete AND verification (build + tests) has passed.
 
 ---
@@ -16,7 +16,7 @@
 
 ## PHASE-02: Auth, Users & Wallet Core
 
-- [ ] TASK-004 — Implement user registration, JWT login, Spring Security config
+- [x] TASK-004 — Implement user registration, JWT login, Spring Security config
 - [ ] TASK-005 — Implement login attempt tracking and 5-strike account lockout
 - [ ] TASK-006 — Implement wallet status management (deactivate/reactivate/freeze/unfreeze)
 - [ ] TASK-007 — Implement GET /api/wallet (balance, status, daily spending)
@@ -79,10 +79,10 @@
 | Phase | Total Tasks | Completed |
 |---|---|---|
 | PHASE-01 | 3 | 3 |
-| PHASE-02 | 4 | 0 |
+| PHASE-02 | 4 | 1 |
 | PHASE-03 | 4 | 0 |
 | PHASE-04 | 5 | 0 |
 | PHASE-05 | 5 | 0 |
 | PHASE-06 | 8 | 0 |
 | PHASE-07 | 4 | 0 |
-| **Total** | **33** | **3** |
+| **Total** | **33** | **4** |

@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -24,15 +25,17 @@ public class Wallet {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(nullable = false)
-    private Double balance = 0.0;
-
-    @Column(nullable = false)
-    private Double dailySpent = 0.0;
-
-    @Column(nullable = false)
+    @Column(nullable = false, precision = 15, scale = 2)
     @Builder.Default
-    private Double dailyLimit = 50000.0;
+    private BigDecimal balance = BigDecimal.ZERO;
+
+    @Column(nullable = false, precision = 15, scale = 2)
+    @Builder.Default
+    private BigDecimal dailySpent = BigDecimal.ZERO;
+
+    @Column(nullable = false, precision = 15, scale = 2)
+    @Builder.Default
+    private BigDecimal dailyLimit = new BigDecimal("50000.00");
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -49,6 +52,15 @@ public class Wallet {
         createdAt = LocalDateTime.now();
         if (status == null) {
             status = Status.ACTIVE;
+        }
+        if (balance == null) {
+            balance = BigDecimal.ZERO;
+        }
+        if (dailySpent == null) {
+            dailySpent = BigDecimal.ZERO;
+        }
+        if (dailyLimit == null) {
+            dailyLimit = new BigDecimal("50000.00");
         }
     }
 

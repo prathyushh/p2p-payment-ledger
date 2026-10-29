@@ -47,6 +47,10 @@ app:
       # Set ADMIN_BOOTSTRAP_PASSWORD in your environment before first startup
       password: ${ADMIN_BOOTSTRAP_PASSWORD:}
 
+  login-attempt:
+    max-failures: ${LOGIN_ATTEMPT_MAX_FAILURES:5}
+    lockout-minutes: ${LOGIN_ATTEMPT_LOCKOUT_MINUTES:30}
+
 server:
   port: 8080
 

@@ -16,6 +16,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
+
 @Service
 public class AuthService {
 
@@ -23,13 +25,16 @@ public class AuthService {
     private final WalletRepository walletRepository;
     private final JwtTokenProvider jwtTokenProvider;
     private final PasswordEncoder passwordEncoder;
+    private final LoginAttemptService loginAttemptService;
 
     public AuthService(UserRepository userRepository, WalletRepository walletRepository,
-                       JwtTokenProvider jwtTokenProvider, PasswordEncoder passwordEncoder) {
+                       JwtTokenProvider jwtTokenProvider, PasswordEncoder passwordEncoder,
+                       LoginAttemptService loginAttemptService) {
         this.userRepository = userRepository;
         this.walletRepository = walletRepository;
         this.jwtTokenProvider = jwtTokenProvider;
         this.passwordEncoder = passwordEncoder;
+        this.loginAttemptService = loginAttemptService;
     }
 
     @Transactional
@@ -60,8 +65,8 @@ public class AuthService {
 
         Wallet wallet = Wallet.builder()
                 .user(user)
-                .balance(0.0)
-                .dailySpent(0.0)
+                .balance(BigDecimal.ZERO)
+                .dailySpent(BigDecimal.ZERO)
                 .status(Wallet.Status.ACTIVE)
                 .build();
 
@@ -72,22 +77,35 @@ public class AuthService {
         return new RegisterResponse(token, user.getId(), user.getName(), user.getEmail(), user.getRole().name());
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public AuthResponse login(AuthRequest request) {
         User user = userRepository.findByEmail(request.email())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
 
-        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
+        // Check if account is locked (and handle auto-unlock if lockout period expired)
+        if (loginAttemptService.isAccountLocked(user)) {
+            // Attempt to auto-unlock if lockout period has expired
+            if (user.getLockedUntil() != null && java.time.LocalDateTime.now().isAfter(user.getLockedUntil())) {
+                loginAttemptService.unlockAccount(user);
+            } else {
+                throw new ResponseStatusException(HttpStatus.LOCKED, 
+                    "Account is locked until " + user.getLockedUntil());
+            }
         }
 
         if (!user.getEnabled()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Account is disabled");
         }
 
-        if (user.getAccountLocked()) {
-            throw new ResponseStatusException(HttpStatus.LOCKED, "Account is locked");
+        // Validate password
+        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+            // Record failed attempt and potentially lock account
+            loginAttemptService.recordFailedAttempt(user, request.ipAddress());
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
+
+        // Record successful attempt
+        loginAttemptService.recordSuccessfulAttempt(user, request.ipAddress());
 
         String token = jwtTokenProvider.generateToken(user.getId(), user.getEmail(), user.getRole().name());
 

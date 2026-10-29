@@ -1,8 +1,8 @@
 # Task Checklist — P2P Payment Ledger
 
 **Status:** IN PROGRESS
-**Last updated:** TASK-004 complete (2026-10-29)
-**Rule:** Only mark `[x]` after implementation is complete AND verification (build + tests) has passed.
+**Last updated:** TASK-011 complete (2026-10-29)
+**Rule:** Only mark \[x]\ after implementation is complete AND verification (build + tests) has passed.
 
 ---
 
@@ -17,18 +17,18 @@
 ## PHASE-02: Auth, Users & Wallet Core
 
 - [x] TASK-004 — Implement user registration, JWT login, Spring Security config
-- [ ] TASK-005 — Implement login attempt tracking and 5-strike account lockout
-- [ ] TASK-006 — Implement wallet status management (deactivate/reactivate/freeze/unfreeze)
-- [ ] TASK-007 — Implement GET /api/wallet (balance, status, daily spending)
+- [x] TASK-005 — Implement login attempt tracking and 5-strike account lockout
+- [x] TASK-006 — Implement wallet status management (deactivate/reactivate/freeze/unfreeze)
+- [x] TASK-007 — Implement GET /api/wallet (balance, status, daily spending)
 
 ---
 
 ## PHASE-03: Simulated Accounts, Top-Up & Auto Reload
 
-- [ ] TASK-008 — Implement simulated bank account CRUD and Add Demo Funds
-- [ ] TASK-009 — Implement atomic manual wallet top-up from simulated account
-- [ ] TASK-010 — Implement Auto Reload configuration (GET/PUT settings)
-- [ ] TASK-011 — Implement Auto Reload behavior, concurrency guard, and anti-recursion
+- [x] TASK-008 — Implement simulated bank account CRUD and Add Demo Funds
+- [x] TASK-009 — Implement atomic manual wallet top-up from simulated account
+- [x] TASK-010 — Implement Auto Reload configuration (GET/PUT settings)
+- [x] TASK-011 — Implement Auto Reload behavior, concurrency guard, and anti-recursion
 
 ---
 
@@ -79,10 +79,10 @@
 | Phase | Total Tasks | Completed |
 |---|---|---|
 | PHASE-01 | 3 | 3 |
-| PHASE-02 | 4 | 1 |
-| PHASE-03 | 4 | 0 |
+| PHASE-02 | 4 | 4 |
+| PHASE-03 | 4 | 4 |
 | PHASE-04 | 5 | 0 |
 | PHASE-05 | 5 | 0 |
 | PHASE-06 | 8 | 0 |
 | PHASE-07 | 4 | 0 |
-| **Total** | **33** | **4** |
+| **Total** | **33** | **11** |

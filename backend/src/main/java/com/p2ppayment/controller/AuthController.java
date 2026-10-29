@@ -6,6 +6,7 @@ import com.p2ppayment.dto.RegisterRequest;
 import com.p2ppayment.dto.RegisterResponse;
 import com.p2ppayment.dto.UserResponse;
 import com.p2ppayment.service.AuthService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -29,8 +30,13 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody AuthRequest request) {
-        AuthResponse response = authService.login(request);
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody AuthRequest request, HttpServletRequest httpRequest) {
+        // Extract client IP address
+        String ipAddress = getClientIpAddress(httpRequest);
+        
+        // Create request with IP address
+        AuthRequest requestWithIp = new AuthRequest(request.email(), request.password(), ipAddress);
+        AuthResponse response = authService.login(requestWithIp);
         return ResponseEntity.ok(response);
     }
 
@@ -40,5 +46,19 @@ public class AuthController {
         Long userId = Long.parseLong(authentication.getName());
         UserResponse response = authService.getCurrentUser(userId);
         return ResponseEntity.ok(response);
+    }
+
+    private String getClientIpAddress(HttpServletRequest request) {
+        String xForwardedFor = request.getHeader("X-Forwarded-For");
+        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
+            return xForwardedFor.split(",")[0].trim();
+        }
+        
+        String xRealIp = request.getHeader("X-Real-IP");
+        if (xRealIp != null && !xRealIp.isEmpty()) {
+            return xRealIp;
+        }
+        
+        return request.getRemoteAddr();
     }
 }

@@ -9,9 +9,9 @@ export function NotificationProvider({ children }) {
   const refreshUnreadCount = useCallback(async () => {
     try {
       const res = await axiosClient.get('/notifications/unread-count');
-      setUnreadCount(res.data.count ?? 0);
+      setUnreadCount(res.data.unreadCount ?? 0);
     } catch {
-      // Fail silently — not critical
+      // Fail silently - not critical
     }
   }, []);
 

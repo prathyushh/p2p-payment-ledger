@@ -1,8 +1,8 @@
 # Task Checklist — P2P Payment Ledger
 
 **Status:** IN PROGRESS
-**Last updated:** TASK-011 complete (2026-10-29)
-**Rule:** Only mark \[x]\ after implementation is complete AND verification (build + tests) has passed.
+**Last updated:** TASK-016 complete (2026-10-29)
+**Rule:** Only mark [x] after implementation is complete AND verification (build + tests) has passed.
 
 ---
 
@@ -34,11 +34,11 @@
 
 ## PHASE-04: P2P Transfers, Fraud & Settlement
 
-- [ ] TASK-012 — Implement send money with idempotency, PIN validation, and delayed settlement
-- [ ] TASK-013 — Implement fraud detection (daily limit, duplicate, high-value)
-- [ ] TASK-014 — Implement ACH Settlement Scheduler (hourly, with logging)
-- [ ] TASK-015 — Implement admin fraud review (block/dismiss)
-- [ ] TASK-016 — Implement transaction history, mini-statement, detail view, and stats
+- [x] TASK-012 — Implement send money with idempotency, PIN validation, and delayed settlement
+- [x] TASK-013 — Implement fraud detection (daily limit, duplicate, high-value)
+- [x] TASK-014 — Implement ACH Settlement Scheduler (hourly, with logging)
+- [x] TASK-015 — Implement admin fraud review (block/dismiss)
+- [x] TASK-016 — Implement transaction history, mini-statement, detail view, and stats
 
 ---
 
@@ -81,8 +81,8 @@
 | PHASE-01 | 3 | 3 |
 | PHASE-02 | 4 | 4 |
 | PHASE-03 | 4 | 4 |
-| PHASE-04 | 5 | 0 |
+| PHASE-04 | 5 | 5 |
 | PHASE-05 | 5 | 0 |
 | PHASE-06 | 8 | 0 |
 | PHASE-07 | 4 | 0 |
-| **Total** | **33** | **11** |
+| **Total** | **33** | **16** |

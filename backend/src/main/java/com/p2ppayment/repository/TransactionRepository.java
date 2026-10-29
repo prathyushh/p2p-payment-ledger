@@ -90,4 +90,90 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
 
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.receiverWallet.id = :walletId AND t.type = 'P2P_TRANSFER' AND t.status IN ('SUCCESS', 'PENDING') AND YEAR(t.createdAt) = YEAR(CURRENT_DATE) AND MONTH(t.createdAt) = MONTH(CURRENT_DATE)")
     BigDecimal sumReceivedThisMonth(Long walletId);
+
+    // Reconciliation queries
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.type = 'P2P_TRANSFER' AND t.status = 'SUCCESS' AND DATE(t.settledAt) = :summaryDate")
+    Long countSettledTransactionsForDate(LocalDate summaryDate);
+
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.type = 'P2P_TRANSFER' AND t.status = 'SUCCESS' AND DATE(t.settledAt) = :summaryDate")
+    BigDecimal sumSettledAmountForDate(LocalDate summaryDate);
+
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.type = 'P2P_TRANSFER' AND t.status = 'PENDING' AND DATE(t.createdAt) = :summaryDate")
+    Long countPendingTransactionsForDate(LocalDate summaryDate);
+
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.type = 'P2P_TRANSFER' AND t.status = 'PENDING' AND DATE(t.createdAt) = :summaryDate")
+    BigDecimal sumPendingAmountForDate(LocalDate summaryDate);
+
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.type = 'P2P_TRANSFER' AND DATE(t.createdAt) = :summaryDate AND (t.status = 'PENDING' OR t.status = 'SUCCESS')")
+    Long countInitiatedTransactionsForDate(LocalDate summaryDate);
+
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.type = 'P2P_TRANSFER' AND DATE(t.createdAt) = :summaryDate AND (t.status = 'PENDING' OR t.status = 'SUCCESS')")
+    BigDecimal sumInitiatedAmountForDate(LocalDate summaryDate);
+
+    // Dashboard queries
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.type = 'P2P_TRANSFER' AND DATE(t.createdAt) = :date AND (t.status = 'PENDING' OR t.status = 'SUCCESS')")
+    Long countInitiatedForDate(LocalDate date);
+
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.type = 'P2P_TRANSFER' AND t.status = 'SUCCESS' AND DATE(t.settledAt) = :date")
+    Long countSettledForDate(LocalDate date);
+
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.type = 'P2P_TRANSFER' AND t.status = 'SUCCESS' AND DATE(t.settledAt) = :date")
+    BigDecimal sumVolumeForDate(LocalDate date);
+
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.status = 'PENDING' AND t.type = 'P2P_TRANSFER'")
+    BigDecimal sumPendingSettlementAmount();
+
+    // Admin transaction monitoring queries
+    @Query("SELECT t FROM Transaction t WHERE t.type = :type ORDER BY t.createdAt DESC")
+    Page<Transaction> findAllByType(String type, Pageable pageable);
+
+    @Query("SELECT t FROM Transaction t WHERE t.status = :status ORDER BY t.createdAt DESC")
+    Page<Transaction> findAllByStatus(String status, Pageable pageable);
+
+    @Query("SELECT t FROM Transaction t WHERE t.amount >= :minAmount AND t.amount <= :maxAmount ORDER BY t.createdAt DESC")
+    Page<Transaction> findByAmountRange(BigDecimal minAmount, BigDecimal maxAmount, Pageable pageable);
+
+    @Query("SELECT t FROM Transaction t WHERE DATE(t.createdAt) >= :startDate AND DATE(t.createdAt) <= :endDate ORDER BY t.createdAt DESC")
+    Page<Transaction> findByDateRange(LocalDate startDate, LocalDate endDate, Pageable pageable);
+
+    @Query("SELECT t FROM Transaction t WHERE t.type = :type AND t.status = :status ORDER BY t.createdAt DESC")
+    Page<Transaction> findByTypeAndStatus(String type, String status, Pageable pageable);
+
+    @Query("SELECT t FROM Transaction t WHERE t.type = :type AND t.status = :status AND t.amount >= :minAmount AND t.amount <= :maxAmount ORDER BY t.createdAt DESC")
+    Page<Transaction> findByTypeStatusAndAmountRange(String type, String status, BigDecimal minAmount, BigDecimal maxAmount, Pageable pageable);
+
+    @Query("SELECT t FROM Transaction t WHERE t.type = :type AND t.status = :status AND DATE(t.createdAt) >= :startDate AND DATE(t.createdAt) <= :endDate ORDER BY t.createdAt DESC")
+    Page<Transaction> findByTypeStatusAndDateRange(String type, String status, LocalDate startDate, LocalDate endDate, Pageable pageable);
+
+    // Settlement queue queries
+    @Query("SELECT t FROM Transaction t WHERE t.status = 'PENDING' AND t.settlementDueDate < :today ORDER BY t.settlementDueDate ASC")
+    List<Transaction> findOverduePendingTransactions(LocalDate today);
+
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.status = 'PENDING' AND t.settlementDueDate < :today")
+    Long countOverduePendingTransactions(LocalDate today);
+
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.status = 'PENDING' AND t.settlementDueDate < :today")
+    BigDecimal sumOverduePendingAmount(LocalDate today);
+
+    @Query("SELECT t FROM Transaction t WHERE t.status = 'PENDING' AND t.settlementDueDate = :date ORDER BY t.createdAt ASC")
+    List<Transaction> findPendingTransactionsDueDate(LocalDate date);
+
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.status = 'PENDING' AND t.settlementDueDate = :date")
+    Long countPendingTransactionsDueDate(LocalDate date);
+
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.status = 'PENDING' AND t.settlementDueDate = :date")
+    BigDecimal sumPendingAmountDueDate(LocalDate date);
+
+    @Query("SELECT t FROM Transaction t WHERE t.status = 'PENDING' AND t.settlementDueDate > :today ORDER BY t.settlementDueDate ASC")
+    List<Transaction> findFuturePendingTransactions(LocalDate today);
+
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.status = 'PENDING' AND t.settlementDueDate > :today")
+    Long countFuturePendingTransactions(LocalDate today);
+
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.status = 'PENDING' AND t.settlementDueDate > :today")
+    BigDecimal sumFuturePendingAmount(LocalDate today);
+
+
+
+
 }

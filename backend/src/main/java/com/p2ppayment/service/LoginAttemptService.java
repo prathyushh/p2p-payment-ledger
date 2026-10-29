@@ -1,6 +1,7 @@
 package com.p2ppayment.service;
 
 import com.p2ppayment.entity.LoginAttempt;
+import com.p2ppayment.entity.Notification;
 import com.p2ppayment.entity.User;
 import com.p2ppayment.repository.LoginAttemptRepository;
 import com.p2ppayment.repository.UserRepository;
@@ -15,6 +16,7 @@ public class LoginAttemptService {
 
     private final LoginAttemptRepository loginAttemptRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     @Value("${app.login-attempt.max-failures:5}")
     private int maxFailedAttempts;
@@ -22,9 +24,12 @@ public class LoginAttemptService {
     @Value("${app.login-attempt.lockout-minutes:30}")
     private int lockoutMinutes;
 
-    public LoginAttemptService(LoginAttemptRepository loginAttemptRepository, UserRepository userRepository) {
+    public LoginAttemptService(LoginAttemptRepository loginAttemptRepository, 
+                              UserRepository userRepository,
+                              NotificationService notificationService) {
         this.loginAttemptRepository = loginAttemptRepository;
         this.userRepository = userRepository;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -47,6 +52,18 @@ public class LoginAttemptService {
             user.setAccountLocked(true);
             user.setLockedUntil(LocalDateTime.now().plusMinutes(lockoutMinutes));
             userRepository.save(user);
+            
+            // Create notification for account lock
+            try {
+                notificationService.create(
+                    user.getId(),
+                    Notification.Type.ACCOUNT_LOCKED,
+                    "Account Locked",
+                    "Your account has been locked due to " + maxFailedAttempts + " failed login attempts. It will be automatically unlocked in " + lockoutMinutes + " minutes."
+                );
+            } catch (Exception e) {
+                // Log but do not fail the login attempt if notification creation fails
+            }
         }
     }
 

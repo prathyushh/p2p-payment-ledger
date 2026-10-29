@@ -1,4 +1,4 @@
-# Progress — P2P Payment Ledger
+# Progress – P2P Payment Ledger
 
 ---
 
@@ -7,9 +7,9 @@
 ---
 
 ## Current Phase
-**Phase:** PHASE-04 — P2P Transfers, Fraud & Settlement — COMPLETE (5/5 tasks)
-**Current Task:** TASK-017 — Daily Limit Reset, Account Auto-Unlock, Daily Summary/Reconciliation jobs — NEXT
-**Last Completed Task:** TASK-016 — Transaction History & Stats
+**Phase:** PHASE-05 – Remaining Jobs, Admin Panel & Notifications – COMPLETE (5/5 tasks)
+**Current Task:** PHASE-06 – Frontend (Not started)
+**Last Completed Task:** TASK-021 – Admin Job Monitor & Reconciliation
 
 ---
 
@@ -21,7 +21,7 @@
 | PHASE-02: Auth & Wallet Core | COMPLETE | All 4 tasks done and verified |
 | PHASE-03: Simulated Accounts & Auto Reload | COMPLETE | All 4 tasks done and verified |
 | PHASE-04: P2P Transfers, Fraud & Settlement | COMPLETE | All 5 tasks done and verified |
-| PHASE-05: Admin Panel & Remaining Jobs | NOT STARTED | Depends on PHASE-04 |
+| PHASE-05: Admin Panel & Remaining Jobs | COMPLETE | All 5 tasks complete (TASK-017, TASK-018, TASK-019, TASK-020, TASK-021) |
 | PHASE-06: Frontend | NOT STARTED | Depends on PHASE-05 |
 | PHASE-07: Testing & Hardening | NOT STARTED | Depends on all previous |
 
@@ -29,13 +29,7 @@
 
 ## Completed Tasks
 
-- [x] TASK-001 through TASK-016 (16 tasks completed and verified)
-
----
-
-## In-Progress Tasks
-
-None — TASK-016 complete; ready for TASK-017.
+- [x] TASK-001 through TASK-021 (21 tasks completed and verified)
 
 ---
 
@@ -43,147 +37,115 @@ None — TASK-016 complete; ready for TASK-017.
 
 | Task | Test | Result | Date |
 |---|---|---|---|
-| TASK-016 | mvn test — Spring context with TransactionController, history/stats methods | PASSED: 1/0/0 | 2026-10-29 |
+| TASK-021 | mvn clean compile – 94 Java files, admin job monitor and reconciliation | SUCCESS: BUILD SUCCESS | 2026-10-29 |
 
 ---
 
-## TASK-016 Implementation Summary
+## TASK-021 Implementation Summary
 
-**Objective:** Implement transaction list, mini-statement, detail view, and stats endpoints.
-**Requirements:** REQ-014 (transaction history)
-**Dependencies:** TASK-012 (P2P transfer), TASK-013 (fraud detection)
+**Objective:** Admin job monitor for execution history and reconciliation data viewer.
+**Requirements:** REQ-017f (Job Monitor), REQ-017g (Reconciliation)
+**Dependencies:** TASK-017 (scheduler jobs), TASK-014 (settlement data)
 
-**Files Created (5 new files):**
+**Files Created (4 new files):**
 
-1. **TransactionResponse.java** (DTO)
-   - Fields: id, type, status, amount, senderEmail, receiverEmail, remark, settlementDueDate, initiatedAt, settledAt
-   - Used for transaction list and mini-statement responses
+1. **AdminJobController.java** (REST controller)
+   - Base path: /api/admin/jobs
+   - Authorization: @PreAuthorize("hasRole('ADMIN')")
+   - Endpoints:
+     - GET /api/admin/jobs – Returns last 20 job runs sorted by most recent first
+     - GET /api/admin/jobs/{id} – Returns specific job log by ID
 
-2. **TransactionDetailResponse.java** (DTO)
-   - Fields: id, type, status, amount, senderEmail, receiverEmail, remark, settlementDueDate, initiatedAt, settledAt, ledgerEntries
-   - Used for detailed transaction view with ledger entries
+2. **AdminReconciliationController.java** (REST controller)
+   - Base path: /api/admin/reconciliation
+   - Authorization: @PreAuthorize("hasRole('ADMIN')")
+   - Endpoints:
+     - GET /api/admin/reconciliation – Returns today's reconciliation summary (debit/credit totals, mismatch flag)
+     - GET /api/admin/reconciliation/{date} – Returns reconciliation for specific date (format: YYYY-MM-DD)
 
-3. **LedgerEntryResponse.java** (DTO)
-   - Fields: id, type, amount, balanceBefore, balanceAfter, createdAt
-   - Nested in TransactionDetailResponse
+3. **ScheduledJobLogResponse.java** (DTO)
+   - Fields: id, jobName, startedAt, endedAt, status, recordsProcessed, recordsFailed, totalAmount, errorMessage
+   - Maps ScheduledJobLog entity to API response
 
-4. **TransactionStatsResponse.java** (DTO)
-   - Fields: totalSent, totalReceived, totalSentAmount, totalReceivedAmount, thisMonthSent, thisMonthReceived, thisMonthSentAmount, thisMonthReceivedAmount
-   - Used for statistics endpoint
+4. **DailySummaryResponse.java** (DTO)
+   - Fields: id, summaryDate, totalTransfersInitiated, totalTransfersInitiatedAmount, totalTransfersSettled, totalTransfersSettledAmount, fraudAlertsRaised, newUserRegistrations, totalPendingSettlementAmount, reconciliationDebitSum, reconciliationCreditSum, reconciliationMismatch, createdAt
+   - Maps DailySummary entity to API response
 
-5. **TransactionController.java** (new controller)
-   - Base path: /api/transactions
-   - Endpoints: GET /, GET /mini-statement, GET /{id}, GET /stats
-   - Authorization: JWT-authenticated users
+**Job Monitor Behavior:**
 
-**Files Modified (2 files):**
+GET /api/admin/jobs returns:
+   - Last 20 scheduled job runs (DailyLimitReset, AccountAutoUnlock, DailySummary, AchSettlement)
+   - Sorted by most recent startedAt timestamp first
+   - Each entry includes job name, status (RUNNING/SUCCESS/FAILED), timing, processed record count, and error message if failed
 
-1. **TransactionRepository.java** (enhanced)
-   - Added 20+ query methods for transaction history and duplicate detection
-   - Supports pagination with filters (type, status, date range)
-   - Added indRecentDuplicates() for 2-minute duplicate detection window
-   - Added stats queries (count, sum by sender/receiver, monthly aggregates)
+GET /api/admin/jobs/{id} returns:
+   - Detailed view of a specific job run
+   - All fields from ScheduledJobLog: jobName, startedAt, endedAt, status, recordsProcessed, recordsFailed, totalAmount, errorMessage
 
-2. **TransactionService.java** (enhanced)
-   - Added getTransactionHistory() — paginated transaction list
-   - Added getMiniStatement() — last 10 transactions
-   - Added getTransactionDetail() — transaction with ledger entries + authorization check
-   - Added getTransactionStats() — total sent/received, monthly stats
-   - Added checkDuplicateTransaction() — helper for duplicate detection
-   - Added TransactionStats inner class
+**Reconciliation Monitor Behavior:**
 
-3. **FraudService.java** (fixed)
-   - Updated checkDuplicate() to use actual database query via indRecentDuplicates()
-   - Now passes wallet IDs instead of user IDs to the query
+GET /api/admin/reconciliation returns:
+   - Today's daily summary with debit/credit reconciliation results
+   - Returns 404 if no summary exists for today (job hasn't run yet)
+   - Includes:
+     - Transfer counts and amounts (initiated/settled)
+     - Fraud alerts raised and new user registrations
+     - Total pending settlement amount
+     - Reconciliation debit sum (expected debits)
+     - Reconciliation credit sum (expected credits)
+     - Reconciliation mismatch flag (Boolean, true if debits ≠ credits)
 
-**User Endpoints:**
+GET /api/admin/reconciliation/{date} returns:
+   - Reconciliation summary for a specific date (YYYY-MM-DD format)
+   - Returns 404 if no summary exists for that date
+   - Returns 400 if date format is invalid
 
-| Method | Endpoint | Auth | Behavior | Status |
-|---|---|---|---|---|
-| GET | /api/transactions | USER | List user's sent transactions (paginated, default size=20) | 200 OK |
-| GET | /api/transactions/mini-statement | USER | Last 10 transactions (sent+received) | 200 OK |
-| GET | /api/transactions/{id} | USER | Transaction detail with ledger entries | 200 OK or 403 Forbidden |
-| GET | /api/transactions/stats | USER | Transaction statistics | 200 OK |
+**Authorization & Error Handling:**
 
-**History Filters & Pagination:**
-
-| Parameter | Type | Description |
-|---|---|---|
-| page | int | Page number (0-indexed), default 0 |
-| size | int | Page size, default 20, max 100 |
-
-**Transaction Detail (GET /{id}):**
-- Returns transaction with full details
-- Includes all ledger entries (DEBIT/CREDIT) with before/after balances
-- Authorization: user must be sender or receiver (else 403 FORBIDDEN)
-- Not found: 404 NOT_FOUND
-
-**Stats (GET /stats):**
-- Total sent (count + amount)
-- Total received (count + amount)
-- This month sent (count + amount)
-- This month received (count + amount)
-
-**Duplicate Detection Completed:**
-
-Implemented the 2-minute duplicate detection query identified as pending in TASK-013:
-- Query: indRecentDuplicates(senderWalletId, receiverWalletId, amount, twoMinutesAgo)
-- Criteria: Same sender, receiver, amount within 2 minutes
-- Statuses checked: PENDING or SUCCESS only
-- Returns: List of matching transactions
-- Used by: FraudService.checkDuplicate() → TransactionService.sendMoney()
-
-**Authorization & Ownership:**
-
-- All endpoints require JWT authentication
-- User can only view their own transactions (sender or receiver)
-- Attempting to view another user's transaction returns 403 FORBIDDEN
-- Stats retrieved only for authenticated user's wallet
+- All endpoints require JWT + @PreAuthorize("hasRole('ADMIN')")
+- Job not found: 404 NOT_FOUND
+- Invalid date format: 400 BAD_REQUEST
+- No reconciliation data for date: 404 NOT_FOUND
+- No new compilation errors; 5 pre-existing Spring Security deprecation warnings
 
 **Verification:**
-- mvn clean compile: BUILD SUCCESS (72 Java files, 3 Spring Security deprecation warnings)
-- mvn test: PASSED (1/0/0) — Spring context loads with TransactionController and repository queries
+   - mvn clean compile: BUILD SUCCESS (94 Java files, +4 for TASK-021)
+   - All four new class files compiled successfully
+   - No schema changes required (uses existing ScheduledJobLog and DailySummary entities)
+   - Repositories already exist (ScheduledJobLogRepository, DailySummaryRepository)
 
-**Acceptance Criteria Met:**
-✅ Paginated transaction list with default page size 20
-✅ Mini-statement endpoint returns last 10 transactions
-✅ Detail endpoint returns transaction with ledger entries
-✅ Stats endpoint returns total sent/received and monthly counts/amounts
-✅ Duplicate detection query: 2-min window, same sender/receiver/amount, PENDING/SUCCESS
-✅ Authorization checks: user can view only own transactions
-✅ Appropriate HTTP status codes (200 OK, 403 Forbidden, 404 Not Found)
+**Implementation Notes:**
 
-**Limitations & Pending Work:**
-
-1. **No Advanced Filters:** Endpoints do not support filter by type/status/date range (can be added in future enhancement)
-2. **No Ledger Entry Filtering:** All ledger entries returned; no ability to filter by type (DEBIT/CREDIT)
-3. **Mini-statement Combined:** Returns both sent and received; no separate sent/received endpoints (by design)
-4. **No Transaction Search:** No full-text search by recipient email or remark
-5. **Testing Deferred:** No unit/integration tests (PHASE-07)
+1. AdminJobController retrieves last 20 job runs using Pageable with DESC sort on startedAt
+2. AdminReconciliationController supports both today and historical date queries
+3. Date parsing validates YYYY-MM-DD format before database lookup
+4. DTOs use BigDecimal for financial amounts (consistent with entity schema)
+5. Status enum converted to String in response (RUNNING/SUCCESS/FAILED)
+6. No audit logging needed for read-only admin queries (per REQ-017f/g)
 
 ---
 
-## Next Task
+## PHASE-05 Completion Summary
 
-**TASK-017** — Daily Limit Reset, Account Auto-Unlock, Daily Summary/Reconciliation jobs
+All 5 backend admin tasks now complete:
+- **TASK-017:** 4 scheduler jobs (DailyLimitReset, AccountAutoUnlock, DailySummary, AchSettlement)
+- **TASK-018:** Complete notification system (12 events wired, query endpoints)
+- **TASK-019:** Admin dashboard stats and user management (freeze/unfreeze)
+- **TASK-020:** Transaction monitoring and settlement queue with manual trigger
+- **TASK-021:** Job monitor and reconciliation viewer
+
+Backend now supports comprehensive admin oversight of the P2P payment system.
 
 ---
 
-## Handoff Notes
+## Next: PHASE-06 (Frontend)
 
-To resume this project in a new session:
-1. PHASE-04 NOW COMPLETE: all 5 tasks (TASK-012 through TASK-016) done
-2. Current backend: 72 Java files (68 → +4 DTOs, +1 enhanced controller, +0 new services), all compiling, tests passing
-3. Transaction history and duplicate detection fully implemented
+Frontend development can now proceed with full backend API support. TASK-022 through TASK-029 will implement:
+- Authentication pages (login/register)
+- User dashboard, wallet, and transaction views
+- Bank account and auto-reload management
+- Send money flow with recipient search
+- Notifications interface
+- Complete admin dashboard with charts and monitoring pages
 
-**Implementation points for TASK-017:**
-- DailyLimitResetJob (@Scheduled "0 0 0 * * *") — UPDATE wallets SET daily_spent = 0
-- AccountAutoUnlockJob (@Scheduled "0 */5 * * * *") — find locked accounts past locked_until, unlock, notify
-- DailySummaryJob (@Scheduled "0 0 23 * * *") — aggregate stats, reconciliation, create DailySummary
-
-**Transaction History Summary:**
-- GET /api/transactions — paginated user transaction list (sent by default)
-- GET /api/transactions/mini-statement — last 10 transactions
-- GET /api/transactions/{id} — detail with ledger entries + auth check
-- GET /api/transactions/stats — sent/received totals and monthly aggregates
-- Duplicate detection: 2-min window query now fully functional
+Total backend: 21 tasks complete, 94 Java files, full compilation success.

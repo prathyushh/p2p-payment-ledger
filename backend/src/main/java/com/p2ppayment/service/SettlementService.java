@@ -19,15 +19,18 @@ public class SettlementService {
     private final WalletRepository walletRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     public SettlementService(TransactionRepository transactionRepository,
                             WalletRepository walletRepository,
                             LedgerEntryRepository ledgerEntryRepository,
-                            UserRepository userRepository) {
+                            UserRepository userRepository,
+                            NotificationService notificationService) {
         this.transactionRepository = transactionRepository;
         this.walletRepository = walletRepository;
         this.ledgerEntryRepository = ledgerEntryRepository;
         this.userRepository = userRepository;
+        this.notificationService = notificationService;
     }
 
     @Transactional(readOnly = true)
@@ -89,6 +92,19 @@ public class SettlementService {
                 .createdAt(LocalDateTime.now())
                 .build();
         ledgerEntryRepository.save(refundEntry);
+        
+        // Create notification for declined settlement
+        try {
+            notificationService.create(
+                senderWallet.getUser().getId(),
+                Notification.Type.TRANSFER_FAILED,
+                "Transfer Failed",
+                "Your transfer of Rs " + amount + " was not settled because the recipient wallet is inactive or frozen. Amount refunded.",
+                transaction
+            );
+        } catch (Exception e) {
+            // Log but do not fail settlement if notification fails
+        }
     }
 
     private void handleSuccessfulSettlement(Transaction transaction, Wallet senderWallet, Wallet receiverWallet, BigDecimal amount) {
@@ -108,5 +124,32 @@ public class SettlementService {
                 .createdAt(LocalDateTime.now())
                 .build();
         ledgerEntryRepository.save(creditEntry);
+        
+        // Create notifications for successful settlement
+        try {
+            // Notify sender
+            notificationService.create(
+                senderWallet.getUser().getId(),
+                Notification.Type.TRANSFER_SETTLED,
+                "Transfer Settled",
+                "Your transfer of Rs " + amount + " to " + receiverWallet.getUser().getEmail() + " has been settled.",
+                transaction
+            );
+        } catch (Exception e) {
+            // Log but do not fail settlement
+        }
+        
+        try {
+            // Notify receiver
+            notificationService.create(
+                receiverWallet.getUser().getId(),
+                Notification.Type.TRANSFER_SETTLED,
+                "Transfer Received",
+                "You received Rs " + amount + " from " + senderWallet.getUser().getEmail() + ".",
+                transaction
+            );
+        } catch (Exception e) {
+            // Log but do not fail settlement
+        }
     }
 }

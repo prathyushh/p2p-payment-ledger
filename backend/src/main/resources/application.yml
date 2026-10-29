@@ -1,4 +1,13 @@
-﻿spring:
+# ============================================================
+# application.yml — P2P Payment Ledger backend configuration
+#
+# Spring Boot reads configuration from OS environment variables.
+# For local development, use backend/run.ps1 which loads
+# backend/.env and sets the variables before starting the app.
+# Never commit real credentials to this file or to .env.
+# See .env.example at the project root for the full template.
+# ============================================================
+spring:
   application:
     name: p2p-payment-ledger
 

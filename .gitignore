@@ -1,4 +1,4 @@
-﻿# ===== Backend (Java/Maven/Spring Boot) =====
+# ===== Backend (Java/Maven/Spring Boot) =====
 backend/target/
 backend/*.class
 backend/*.jar
@@ -20,7 +20,6 @@ frontend/build/
 
 # ===== Environment & Secrets =====
 .env
-.env.example
 .env.local
 .env.development.local
 .env.test.local

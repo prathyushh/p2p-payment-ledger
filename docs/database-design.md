@@ -1,7 +1,7 @@
-﻿# Database Design — P2P Payment Ledger
+# Database Design — P2P Payment Ledger
 
 **Source:** docs/Project4.pdf (Pages 11–12) + requirements analysis  
-**Status:** PLANNED (not yet implemented)
+**Status:** IMPLEMENTED — all 14 tables migrated successfully (2026-10-29)
 
 ---
 

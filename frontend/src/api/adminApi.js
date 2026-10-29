@@ -1,0 +1,14 @@
+import axiosClient from './axiosClient';
+export const getDashboard = () => axiosClient.get('/admin/dashboard');
+export const getUsers = (params) => axiosClient.get('/admin/users', { params });
+export const getUserTransactions = (id) => axiosClient.get('/admin/users/' + id + '/transactions');
+export const freezeWallet = (id) => axiosClient.post('/admin/users/' + id + '/wallet/freeze');
+export const unfreezeWallet = (id) => axiosClient.post('/admin/users/' + id + '/wallet/unfreeze');
+export const getAdminTransactions = (p) => axiosClient.get('/admin/transactions', { params: p });
+export const getPendingSettlements = () => axiosClient.get('/admin/settlement/pending');
+export const triggerSettlement = (id) => axiosClient.post('/admin/settlement/trigger/' + id);
+export const getFraudAlerts = (p) => axiosClient.get('/admin/fraud-alerts', { params: p });
+export const blockAlert = (id) => axiosClient.post('/admin/fraud-alerts/' + id + '/block');
+export const dismissAlert = (id) => axiosClient.post('/admin/fraud-alerts/' + id + '/dismiss');
+export const getJobLogs = () => axiosClient.get('/admin/jobs');
+export const getReconciliation = () => axiosClient.get('/admin/reconciliation');

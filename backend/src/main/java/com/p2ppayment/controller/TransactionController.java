@@ -4,6 +4,9 @@ import com.p2ppayment.dto.LedgerEntryResponse;
 import com.p2ppayment.dto.TransactionDetailResponse;
 import com.p2ppayment.dto.TransactionResponse;
 import com.p2ppayment.dto.TransactionStatsResponse;
+import com.p2ppayment.dto.SendMoneyRequest;
+import com.p2ppayment.dto.SendMoneyResponse;
+import jakarta.validation.Valid;
 import com.p2ppayment.entity.LedgerEntry;
 import com.p2ppayment.entity.Transaction;
 import com.p2ppayment.repository.LedgerEntryRepository;
@@ -159,6 +162,39 @@ public class TransactionController {
         return ResponseEntity.ok(response);
     }
 
+
+    /**
+     * Send money to another user (P2P transfer).
+     *
+     * @param request SendMoneyRequest with recipient, amount, remark, and PIN
+     * @return SendMoneyResponse with transaction details
+     */
+    @PostMapping("/send")
+    public ResponseEntity<SendMoneyResponse> sendMoney(
+            @Valid @RequestBody SendMoneyRequest request) {
+        
+        Long userId = getAuthenticatedUserId();
+        
+        Transaction transaction = transactionService.sendMoney(
+                userId,
+                request.recipientIdentifier(),
+                request.amount(),
+                request.remark(),
+                request.pin()
+        );
+        
+        SendMoneyResponse response = new SendMoneyResponse(
+                transaction.getId(),
+                transaction.getStatus().toString(),
+                transaction.getAmount(),
+                transaction.getSenderWallet().getBalance(),
+                transaction.getSettlementDueDate(),
+                "Money sent successfully. Settlement expected by " + transaction.getSettlementDueDate()
+        );
+        
+        return ResponseEntity.ok(response);
+    }
+
     /**
      * Convert Transaction entity to response DTO with null-safety.
      * Handles cases where sender or receiver wallet may be null (e.g., system transactions).
@@ -202,6 +238,10 @@ public class TransactionController {
         );
     }
 }
+
+
+
+
 
 
 

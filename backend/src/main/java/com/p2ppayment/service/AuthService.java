@@ -39,7 +39,10 @@ public class AuthService {
 
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
-        if (userRepository.existsByEmail(request.email())) {
+        // Normalize email: trim and lowercase
+        String normalizedEmail = request.email().trim().toLowerCase();
+        
+        if (userRepository.existsByEmail(normalizedEmail)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already registered");
         }
 
@@ -52,7 +55,7 @@ public class AuthService {
 
         User user = User.builder()
                 .name(request.name())
-                .email(request.email())
+                .email(normalizedEmail)
                 .phoneNumber(request.phoneNumber())
                 .password(hashedPassword)
                 .transactionPin(hashedPin)
@@ -79,7 +82,10 @@ public class AuthService {
 
     @Transactional
     public AuthResponse login(AuthRequest request) {
-        User user = userRepository.findByEmail(request.email())
+        // Normalize email: trim and lowercase
+        String normalizedEmail = request.email().trim().toLowerCase();
+        
+        User user = userRepository.findByEmail(normalizedEmail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
 
         // Check if account is locked (and handle auto-unlock if lockout period expired)

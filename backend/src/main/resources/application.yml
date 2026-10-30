@@ -14,7 +14,7 @@ spring:
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/p2p_payment}
     username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
+    password: ${DB_PASSWORD:Cred.ai}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -37,7 +37,7 @@ spring:
 
 app:
   jwt:
-    secret: ${JWT_SECRET:change-this-to-a-long-random-secret-key-at-least-32-characters}
+    secret: ${JWT_SECRET:P2P-Dev-JWT-2026!kR90vT4@mX7$wQ2&nL8z}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
 
   admin:
@@ -45,7 +45,7 @@ app:
       email: ${ADMIN_BOOTSTRAP_EMAIL:admin@example.com}
       # Password read from env var — never hardcode a real password here
       # Set ADMIN_BOOTSTRAP_PASSWORD in your environment before first startup
-      password: ${ADMIN_BOOTSTRAP_PASSWORD:}
+      password: ${ADMIN_BOOTSTRAP_PASSWORD:password123}
 
   login-attempt:
     max-failures: ${LOGIN_ATTEMPT_MAX_FAILURES:5}

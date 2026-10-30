@@ -4,14 +4,27 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
-    const stored = localStorage.getItem('user');
-    return stored ? JSON.parse(stored) : null;
+    try {
+      const stored = localStorage.getItem('user');
+      // Only parse if stored data exists and is not the literal string "undefined"
+      if (stored && stored !== 'undefined') {
+        return JSON.parse(stored);
+      }
+      return null;
+    } catch (e) {
+      // If parsing fails, clear the invalid data and return null
+      localStorage.removeItem('user');
+      return null;
+    }
   });
 
   const login = useCallback((token, userData) => {
-    localStorage.setItem('jwt_token', token);
-    localStorage.setItem('user', JSON.stringify(userData));
-    setUser(userData);
+    // Only store if userData is a valid object
+    if (userData) {
+      localStorage.setItem('jwt_token', token);
+      localStorage.setItem('user', JSON.stringify(userData));
+      setUser(userData);
+    }
   }, []);
 
   const logout = useCallback(() => {

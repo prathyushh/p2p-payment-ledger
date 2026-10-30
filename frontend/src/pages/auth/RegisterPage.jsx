@@ -7,7 +7,7 @@ export default function RegisterPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({
-    name: '', email: '', phone_number: '', password: '', transaction_pin: '',
+    name: '', email: '', phoneNumber: '', password: '', transactionPin: '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -17,14 +17,41 @@ export default function RegisterPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!/^\d{4}$/.test(form.transaction_pin)) {
+    
+    // Validate password is not empty
+    if (!form.password || form.password.trim() === '') {
+      setError('Password is required.');
+      return;
+    }
+    
+    // Validate password length
+    if (form.password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+    
+    // Validate transaction PIN
+    if (!form.transactionPin || form.transactionPin.trim() === '') {
+      setError('Transaction PIN is required.');
+      return;
+    }
+    
+    if (!/^\d{4}$/.test(form.transactionPin)) {
       setError('Transaction PIN must be exactly 4 digits.');
       return;
     }
+    
     setLoading(true);
     try {
       const res = await axiosClient.post('/auth/register', form);
-      login(res.data.token, res.data.user);
+      // Construct user object from flat response
+      const user = {
+        id: res.data.id,
+        name: res.data.name,
+        email: res.data.email,
+        role: res.data.role,
+      };
+      login(res.data.token, user);
       navigate('/dashboard');
     } catch (err) {
       const status = err.response?.status;
@@ -44,9 +71,9 @@ export default function RegisterPage() {
       <form onSubmit={handleSubmit}>
         <div><label>Name</label><input name="name" value={form.name} onChange={handleChange} required /></div>
         <div><label>Email</label><input name="email" type="email" value={form.email} onChange={handleChange} required /></div>
-        <div><label>Phone Number</label><input name="phone_number" value={form.phone_number} onChange={handleChange} required /></div>
+        <div><label>Phone Number</label><input name="phoneNumber" value={form.phoneNumber} onChange={handleChange} required /></div>
         <div><label>Password</label><input name="password" type="password" value={form.password} onChange={handleChange} required minLength={8} /></div>
-        <div><label>Transaction PIN (4 digits)</label><input name="transaction_pin" value={form.transaction_pin} onChange={handleChange} required maxLength={4} pattern="\d{4}" /></div>
+        <div><label>Transaction PIN (4 digits)</label><input name="transactionPin" value={form.transactionPin} onChange={handleChange} required maxLength={4} pattern="\d{4}" /></div>
         {error && <p style={{ color: 'red' }}>{error}</p>}
         <button type="submit" disabled={loading}>{loading ? 'Creating account...' : 'Register'}</button>
       </form>

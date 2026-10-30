@@ -18,8 +18,21 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await axiosClient.post('/auth/login', form);
-      login(res.data.token, res.data.user);
-      navigate('/dashboard');
+      // Construct user object from flat response
+      const user = {
+        id: res.data.id,
+        name: res.data.name,
+        email: res.data.email,
+        role: res.data.role,
+      };
+      login(res.data.token, user);
+      
+      // Navigate based on user role
+      if (user.role === 'ADMIN') {
+        navigate('/admin/dashboard');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err) {
       const status = err.response?.status;
       if (status === 423) {

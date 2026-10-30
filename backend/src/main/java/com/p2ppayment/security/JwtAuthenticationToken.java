@@ -14,7 +14,8 @@ public class JwtAuthenticationToken extends AbstractAuthenticationToken {
     private final Long userId;
 
     public JwtAuthenticationToken(String email, String role, Long userId) {
-        super(Collections.singleton(new SimpleGrantedAuthority(role)));
+        // Prefix role with ROLE_ to match Spring Security conventions
+        super(Collections.singleton(new SimpleGrantedAuthority("ROLE_" + role)));
         this.email = email;
         this.role = role;
         this.userId = userId;
@@ -28,7 +29,8 @@ public class JwtAuthenticationToken extends AbstractAuthenticationToken {
 
     @Override
     public Object getPrincipal() {
-        return email;
+        // Return userId as principal so controllers can parse it as Long
+        return userId.toString();
     }
 
     public String getEmail() { return email; }

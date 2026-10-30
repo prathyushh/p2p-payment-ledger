@@ -116,6 +116,9 @@ export default function DashboardPage() {
     FROZEN: '#f97316',
   };
 
+  // Filter active accounts for top-up
+  const activeAccounts = bankAccounts.filter((acc) => acc.isActive);
+
   return (
     <div className="user-page">
       <div className="page-header">
@@ -205,12 +208,21 @@ export default function DashboardPage() {
               required
             >
               <option value="">-- Choose account --</option>
-              {bankAccounts.map((acc) => (
-                <option key={acc.id} value={acc.id}>
-                  {acc.accountType} - Rs {acc.balance?.toFixed(2)} (Status: {acc.status})
-                </option>
-              ))}
+              {activeAccounts.length > 0 ? (
+                activeAccounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.bankName} ({acc.accountNickname}) - Rs {acc.simulatedBalance?.toFixed(2)}
+                  </option>
+                ))
+              ) : (
+                <option disabled>No active accounts available</option>
+              )}
             </select>
+            {activeAccounts.length === 0 && (
+              <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
+                ?? Create a simulated account in <a href="/bank-accounts" style={{ color: '#0066cc' }}>Bank Accounts</a> to top up your wallet
+              </p>
+            )}
           </div>
 
           <div className="form-group">
@@ -231,7 +243,7 @@ export default function DashboardPage() {
           {topUpError && <div className="error-banner">{topUpError}</div>}
           {topUpSuccess && <div className="success-banner">{topUpSuccess}</div>}
 
-          <button type="submit" disabled={topUpLoading} className="btn btn-primary">
+          <button type="submit" disabled={topUpLoading || activeAccounts.length === 0} className="btn btn-primary">
             {topUpLoading ? 'Processing...' : 'Top Up Now'}
           </button>
         </form>
@@ -274,7 +286,7 @@ export default function DashboardPage() {
           </div>
         )}
         <button onClick={() => navigate('/transactions')} className="btn btn-secondary">
-          View All Transactions →
+          View All Transactions ?
         </button>
       </div>
     </div>

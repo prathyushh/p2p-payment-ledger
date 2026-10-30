@@ -8,12 +8,12 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/notifications")
-@PreAuthorize("hasRole('USER')")
 public class NotificationController {
 
     private final NotificationService notificationService;
@@ -32,10 +32,11 @@ public class NotificationController {
     @GetMapping
     public ResponseEntity<Page<NotificationResponse>> getNotifications(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestHeader("Authorization") String token) {
+            @RequestParam(defaultValue = "20") int size) {
         
-        Long userId = extractUserIdFromToken(token);
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        Long userId = Long.parseLong(authentication.getName());
+        
         Pageable pageable = PageRequest.of(page, Math.min(size, 100));
         
         Page<Notification> notifications = notificationService.getNotifications(userId, pageable);
@@ -49,10 +50,11 @@ public class NotificationController {
      * Returns count of unread notifications for the authenticated user.
      */
     @GetMapping("/unread-count")
-    public ResponseEntity<UnreadCountResponse> getUnreadCount(
-            @RequestHeader("Authorization") String token) {
+    public ResponseEntity<UnreadCountResponse> getUnreadCount() {
         
-        Long userId = extractUserIdFromToken(token);
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        Long userId = Long.parseLong(authentication.getName());
+        
         Long count = notificationService.getUnreadCount(userId);
         
         return ResponseEntity.ok(UnreadCountResponse.builder()
@@ -65,11 +67,11 @@ public class NotificationController {
      * Marks a specific notification as read.
      */
     @PutMapping("/{id}/read")
-    public ResponseEntity<Void> markAsRead(
-            @PathVariable Long id,
-            @RequestHeader("Authorization") String token) {
+    public ResponseEntity<Void> markAsRead(@PathVariable Long id) {
         
-        Long userId = extractUserIdFromToken(token);
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        Long userId = Long.parseLong(authentication.getName());
+        
         boolean updated = notificationService.markAsRead(id, userId);
         
         if (!updated) {
@@ -84,20 +86,16 @@ public class NotificationController {
      * Marks all notifications as read for the authenticated user.
      */
     @PutMapping("/read-all")
-    public ResponseEntity<ReadAllResponse> markAllAsRead(
-            @RequestHeader("Authorization") String token) {
+    public ResponseEntity<ReadAllResponse> markAllAsRead() {
         
-        Long userId = extractUserIdFromToken(token);
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        Long userId = Long.parseLong(authentication.getName());
+        
         int updated = notificationService.markAllAsRead(userId);
         
         return ResponseEntity.ok(ReadAllResponse.builder()
                 .markedAsReadCount(updated)
                 .build());
-    }
-
-    private Long extractUserIdFromToken(String token) {
-        String cleanToken = token.startsWith("Bearer ") ? token.substring(7) : token;
-        return jwtTokenProvider.getUserIdFromToken(cleanToken);
     }
 
     private NotificationResponse mapToDto(Notification notification) {

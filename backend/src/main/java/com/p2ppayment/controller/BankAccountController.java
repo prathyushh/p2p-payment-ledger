@@ -70,7 +70,7 @@ public class BankAccountController {
         return ResponseEntity.ok(response);
     }
 
-    @PostMapping("/{accountId}/add-demo-funds")
+    @PostMapping("/{accountId}/demo-funds")
     public ResponseEntity<BankAccountResponse> addDemoFunds(@PathVariable Long accountId, @Valid @RequestBody AddDemoFundsRequest request) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         Long userId = Long.parseLong(authentication.getName());

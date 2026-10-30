@@ -33,6 +33,23 @@ public class TransactionController {
     }
 
     /**
+     * Extract authenticated user ID from security context.
+     */
+    private Long getAuthenticatedUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getName() == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNAUTHORIZED, "User not authenticated");
+        }
+        try {
+            return Long.parseLong(authentication.getName());
+        } catch (NumberFormatException e) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNAUTHORIZED, "Invalid user ID in token");
+        }
+    }
+
+    /**
      * Get user's transaction history with pagination.
      *
      * @param page page number (0-indexed)
@@ -44,8 +61,7 @@ public class TransactionController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        Long userId = Long.parseLong(authentication.getName());
+        Long userId = getAuthenticatedUserId();
 
         Page<Transaction> transactions = transactionService.getTransactionHistory(userId, page, size);
         Page<TransactionResponse> responses = transactions.map(this::toTransactionResponse);
@@ -60,8 +76,7 @@ public class TransactionController {
      */
     @GetMapping("/mini-statement")
     public ResponseEntity<List<TransactionResponse>> getMiniStatement() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        Long userId = Long.parseLong(authentication.getName());
+        Long userId = getAuthenticatedUserId();
 
         List<Transaction> transactions = transactionService.getMiniStatement(userId);
         List<TransactionResponse> responses = transactions.stream()
@@ -81,8 +96,7 @@ public class TransactionController {
     public ResponseEntity<TransactionDetailResponse> getTransactionDetail(
             @PathVariable Long transactionId) {
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        Long userId = Long.parseLong(authentication.getName());
+        Long userId = getAuthenticatedUserId();
 
         Transaction transaction = transactionService.getTransactionDetail(transactionId, userId);
 
@@ -95,13 +109,21 @@ public class TransactionController {
                 .map(this::toLedgerEntryResponse)
                 .collect(Collectors.toList());
 
+        // Safely get sender and receiver emails (handle null wallets)
+        String senderEmail = transaction.getSenderWallet() != null && transaction.getSenderWallet().getUser() != null
+                ? transaction.getSenderWallet().getUser().getEmail()
+                : "System";
+        String receiverEmail = transaction.getReceiverWallet() != null && transaction.getReceiverWallet().getUser() != null
+                ? transaction.getReceiverWallet().getUser().getEmail()
+                : "System";
+
         TransactionDetailResponse response = new TransactionDetailResponse(
                 transaction.getId(),
                 transaction.getType().toString(),
                 transaction.getStatus().toString(),
                 transaction.getAmount(),
-                transaction.getSenderWallet().getUser().getEmail(),
-                transaction.getReceiverWallet().getUser().getEmail(),
+                senderEmail,
+                receiverEmail,
                 transaction.getRemark(),
                 transaction.getSettlementDueDate() != null ? transaction.getSettlementDueDate().toString() : null,
                 transaction.getInitiatedAt(),
@@ -119,8 +141,7 @@ public class TransactionController {
      */
     @GetMapping("/stats")
     public ResponseEntity<TransactionStatsResponse> getTransactionStats() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        Long userId = Long.parseLong(authentication.getName());
+        Long userId = getAuthenticatedUserId();
 
         TransactionService.TransactionStats stats = transactionService.getTransactionStats(userId);
 
@@ -139,16 +160,27 @@ public class TransactionController {
     }
 
     /**
-     * Convert Transaction entity to response DTO.
+     * Convert Transaction entity to response DTO with null-safety.
+     * Handles cases where sender or receiver wallet may be null (e.g., system transactions).
      */
     private TransactionResponse toTransactionResponse(Transaction transaction) {
+        // Safely extract sender email (handle null wallet)
+        String senderEmail = transaction.getSenderWallet() != null && transaction.getSenderWallet().getUser() != null
+                ? transaction.getSenderWallet().getUser().getEmail()
+                : "System";
+
+        // Safely extract receiver email (handle null wallet)
+        String receiverEmail = transaction.getReceiverWallet() != null && transaction.getReceiverWallet().getUser() != null
+                ? transaction.getReceiverWallet().getUser().getEmail()
+                : "System";
+
         return new TransactionResponse(
                 transaction.getId(),
                 transaction.getType().toString(),
                 transaction.getStatus().toString(),
                 transaction.getAmount(),
-                transaction.getSenderWallet().getUser().getEmail(),
-                transaction.getReceiverWallet().getUser().getEmail(),
+                senderEmail,
+                receiverEmail,
                 transaction.getRemark(),
                 transaction.getSettlementDueDate() != null ? transaction.getSettlementDueDate().toString() : null,
                 transaction.getInitiatedAt(),
@@ -170,3 +202,6 @@ public class TransactionController {
         );
     }
 }
+
+
+

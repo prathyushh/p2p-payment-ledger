@@ -42,7 +42,7 @@ public class AutoReloadService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public AutoReloadSettings getSettings(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
@@ -51,11 +51,19 @@ public class AutoReloadService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Wallet not found"));
 
         return autoReloadSettingsRepository.findByWallet(wallet)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Auto Reload settings not found"));
+                .orElseGet(() -> {
+                    // Auto-create default settings if they don't exist
+                    AutoReloadSettings newSettings = AutoReloadSettings.builder()
+                            .wallet(wallet)
+                            .isEnabled(false)
+                            .reloadInProgress(false)
+                            .build();
+                    return autoReloadSettingsRepository.save(newSettings);
+                });
     }
 
     @Transactional
-    public AutoReloadSettings updateSettings(Long userId, Boolean isEnabled, Long accountId, 
+    public AutoReloadSettings updateSettings(Long userId, Boolean isEnabled, Long accountId,
                                             BigDecimal thresholdAmount, BigDecimal reloadAmount) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));

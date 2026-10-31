@@ -20,10 +20,26 @@ public class AutoReloadController {
         this.autoReloadService = autoReloadService;
     }
 
+    /**
+     * Extract authenticated user ID from security context.
+     */
+    private Long getAuthenticatedUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getName() == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNAUTHORIZED, "User not authenticated");
+        }
+        try {
+            return Long.parseLong(authentication.getName());
+        } catch (NumberFormatException e) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNAUTHORIZED, "Invalid user ID in token");
+        }
+    }
+
     @GetMapping
     public ResponseEntity<AutoReloadResponse> getAutoReloadSettings() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        Long userId = Long.parseLong(authentication.getName());
+        Long userId = getAuthenticatedUserId();
 
         AutoReloadSettings settings = autoReloadService.getSettings(userId);
         AutoReloadResponse response = toAutoReloadResponse(settings);
@@ -34,8 +50,7 @@ public class AutoReloadController {
     @PutMapping
     public ResponseEntity<AutoReloadResponse> updateAutoReloadSettings(
             @Valid @RequestBody AutoReloadRequest request) {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        Long userId = Long.parseLong(authentication.getName());
+        Long userId = getAuthenticatedUserId();
 
         AutoReloadSettings settings = autoReloadService.updateSettings(
                 userId,

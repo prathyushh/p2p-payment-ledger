@@ -108,15 +108,28 @@ public class AdminTransactionController {
                 ))
                 .collect(Collectors.toList());
 
+        // Handle null fields safely
+        String senderEmail = transaction.getSenderWallet() != null
+            ? transaction.getSenderWallet().getUser().getEmail()
+            : "System";
+
+        String receiverEmail = transaction.getReceiverWallet() != null
+            ? transaction.getReceiverWallet().getUser().getEmail()
+            : "Unknown";
+
+        String settlementDueDate = transaction.getSettlementDueDate() != null
+            ? transaction.getSettlementDueDate().toString()
+            : null;
+
         TransactionDetailResponse response = new TransactionDetailResponse(
                 transaction.getId(),
                 transaction.getType().name(),
                 transaction.getStatus().name(),
                 transaction.getAmount(),
-                transaction.getSenderWallet().getUser().getEmail(),
-                transaction.getReceiverWallet().getUser().getEmail(),
+                senderEmail,
+                receiverEmail,
                 transaction.getRemark(),
-                transaction.getSettlementDueDate().toString(),
+                settlementDueDate,
                 transaction.getInitiatedAt(),
                 transaction.getSettledAt(),
                 ledgerResponses
@@ -126,18 +139,31 @@ public class AdminTransactionController {
     }
 
     /**
-     * Convert Transaction to TransactionResponse.
+     * Convert Transaction to TransactionResponse with full null-safety.
      */
     private TransactionResponse mapToTransactionResponse(Transaction transaction) {
+        // Handle all null fields safely
+        String senderEmail = transaction.getSenderWallet() != null
+            ? transaction.getSenderWallet().getUser().getEmail()
+            : "System";
+
+        String receiverEmail = transaction.getReceiverWallet() != null
+            ? transaction.getReceiverWallet().getUser().getEmail()
+            : "Unknown";
+
+        String settlementDueDate = transaction.getSettlementDueDate() != null
+            ? transaction.getSettlementDueDate().toString()
+            : null;
+
         return new TransactionResponse(
                 transaction.getId(),
                 transaction.getType().name(),
                 transaction.getStatus().name(),
                 transaction.getAmount(),
-                transaction.getSenderWallet().getUser().getEmail(),
-                transaction.getReceiverWallet().getUser().getEmail(),
+                senderEmail,
+                receiverEmail,
                 transaction.getRemark(),
-                transaction.getSettlementDueDate().toString(),
+                settlementDueDate,
                 transaction.getInitiatedAt(),
                 transaction.getSettledAt()
         );

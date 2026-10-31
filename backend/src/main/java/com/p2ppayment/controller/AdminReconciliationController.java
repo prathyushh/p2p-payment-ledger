@@ -9,7 +9,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 @RestController
@@ -26,26 +28,42 @@ public class AdminReconciliationController {
     /**
      * GET /api/admin/reconciliation
      * Returns today's reconciliation summary (debit/credit totals and mismatch status).
-     * If no data for today exists, returns 404.
+     * If no data for today exists, returns a default empty summary for today.
      */
     @GetMapping
     public ResponseEntity<DailySummaryResponse> getTodayReconciliation() {
         LocalDate today = LocalDate.now();
         Optional<DailySummary> summary = dailySummaryRepository.findBySummaryDate(today);
         
+        DailySummaryResponse response;
         if (summary.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, 
-                    "No reconciliation data found for today (" + today + ")");
+            // Return default summary for today with zero values
+            response = DailySummaryResponse.builder()
+                    .id(null)
+                    .summaryDate(today)
+                    .totalTransfersInitiated(0)
+                    .totalTransfersInitiatedAmount(BigDecimal.ZERO)
+                    .totalTransfersSettled(0)
+                    .totalTransfersSettledAmount(BigDecimal.ZERO)
+                    .fraudAlertsRaised(0)
+                    .newUserRegistrations(0)
+                    .totalPendingSettlementAmount(BigDecimal.ZERO)
+                    .reconciliationDebitSum(BigDecimal.ZERO)
+                    .reconciliationCreditSum(BigDecimal.ZERO)
+                    .reconciliationMismatch(false)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+        } else {
+            response = mapToDailySummaryResponse(summary.get());
         }
         
-        DailySummaryResponse response = mapToDailySummaryResponse(summary.get());
         return ResponseEntity.ok(response);
     }
 
     /**
      * GET /api/admin/reconciliation/{date}
      * Returns reconciliation summary for a specific date (format: YYYY-MM-DD).
-     * If no data for that date exists, returns 404.
+     * If no data for that date exists, returns a default empty summary for that date.
      */
     @GetMapping("/{date}")
     public ResponseEntity<DailySummaryResponse> getReconciliationByDate(@PathVariable String date) {
@@ -53,12 +71,28 @@ public class AdminReconciliationController {
             LocalDate summaryDate = LocalDate.parse(date);
             Optional<DailySummary> summary = dailySummaryRepository.findBySummaryDate(summaryDate);
             
+            DailySummaryResponse response;
             if (summary.isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, 
-                        "No reconciliation data found for date: " + date);
+                // Return default summary for that date with zero values
+                response = DailySummaryResponse.builder()
+                        .id(null)
+                        .summaryDate(summaryDate)
+                        .totalTransfersInitiated(0)
+                        .totalTransfersInitiatedAmount(BigDecimal.ZERO)
+                        .totalTransfersSettled(0)
+                        .totalTransfersSettledAmount(BigDecimal.ZERO)
+                        .fraudAlertsRaised(0)
+                        .newUserRegistrations(0)
+                        .totalPendingSettlementAmount(BigDecimal.ZERO)
+                        .reconciliationDebitSum(BigDecimal.ZERO)
+                        .reconciliationCreditSum(BigDecimal.ZERO)
+                        .reconciliationMismatch(false)
+                        .createdAt(LocalDateTime.now())
+                        .build();
+            } else {
+                response = mapToDailySummaryResponse(summary.get());
             }
             
-            DailySummaryResponse response = mapToDailySummaryResponse(summary.get());
             return ResponseEntity.ok(response);
         } catch (java.time.format.DateTimeParseException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 

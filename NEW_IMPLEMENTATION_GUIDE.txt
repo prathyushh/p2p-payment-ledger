@@ -1,0 +1,127 @@
+﻿========================================================================
+COMPLETE NEW IMPLEMENTATION - ACCOUNT LOCK LOGIC
+========================================================================
+
+## WHAT CHANGED:
+
+1. **ADDED: User.failedLoginAttempts counter** (stores count directly on user)
+2. **ADDED: User.lastFailedLogin timestamp** (tracks last failure)
+3. **SIMPLIFIED: LoginAttemptService** (increment counter, check threshold)
+4. **SIMPLIFIED: AuthService** (step-by-step lock checking)
+5. **KEPT: login_attempts table** (for audit trail only)
+6. **KEPT: AccountAutoUnlockJob** (runs every 5 minutes, already working)
+
+## HOW IT WORKS NOW:
+
+WRONG PASSWORD #1-4:
+→ Increment failedLoginAttempts: 1, 2, 3, 4
+→ Save to database
+→ Return "Invalid credentials"
+
+WRONG PASSWORD #5:
+→ Increment failedLoginAttempts: 5
+→ Check: 5 >= 5 (maxFailedAttempts)
+→ Set accountLocked = true
+→ Set lockedUntil = now + 30 minutes
+→ Save to database
+→ Return HTTP 423 "Account is locked until [timestamp]"
+
+CORRECT PASSWORD (while locked):
+→ Check accountLocked = true
+→ Check lockedUntil > now
+→ Return HTTP 423 "Account is locked until [timestamp]"
+
+CORRECT PASSWORD (after lock expires):
+→ Check accountLocked = true
+→ Check lockedUntil < now (expired!)
+→ Call unlockAccount() - reset all fields
+→ Allow login
+→ Set failedLoginAttempts = 0
+
+SUCCESSFUL LOGIN:
+→ Set failedLoginAttempts = 0
+→ Generate JWT token
+
+## SETUP STEPS:
+
+STEP 1: Drop and recreate database
+---------------------------------------
+psql -U postgres
+DROP DATABASE p2p_payment;
+CREATE DATABASE p2p_payment;
+\q
+
+STEP 2: Start backend (Flyway will run all migrations including V15)
+---------------------------------------
+cd backend
+mvn spring-boot:run
+
+Watch console for:
+[LOGIN-SECURITY] Login Attempt Service Initialized
+[LOGIN-SECURITY] Max Failed Attempts Before Lock: 5
+[LOGIN-SECURITY] Account Lockout Duration: 30 minutes
+
+STEP 3: Create a new user account
+---------------------------------------
+Use the registration endpoint or frontend
+
+STEP 4: Test wrong password (1-4 times)
+---------------------------------------
+Try wrong password
+Console shows:
+[AUTH] Login attempt for: your@email.com
+[LOGIN-SECURITY] Failed login for user: your@email.com
+[LOGIN-SECURITY] User your@email.com failure count: 1/5
+[AUTH] Wrong password for your@email.com
+
+Frontend shows: "Invalid credentials"
+
+STEP 5: Test wrong password (5th time)
+---------------------------------------
+Try wrong password again
+Console shows:
+[LOGIN-SECURITY] User your@email.com failure count: 5/5
+[LOGIN-SECURITY] *** ACCOUNT LOCKED *** User: your@email.com, locked until: [timestamp]
+[AUTH] Account JUST LOCKED for your@email.com until [timestamp]
+
+Frontend shows: "Account is locked until [timestamp]" with countdown
+
+STEP 6: Test correct password (while locked)
+---------------------------------------
+Try correct password
+Console shows:
+[AUTH] Account LOCKED for your@email.com until [timestamp]
+
+Frontend shows: Lock message - LOGIN BLOCKED
+
+STEP 7: Wait 30 minutes OR fast-forward
+---------------------------------------
+To test without waiting, run in psql:
+UPDATE users SET locked_until = NOW() - INTERVAL '1 minute' WHERE email = 'your@email.com';
+
+Then try correct password:
+Console shows:
+[AUTH] Lock expired for your@email.com, auto-unlocking
+[LOGIN-SECURITY] Unlocking account for user: your@email.com
+[AUTH] Successful login for your@email.com
+
+Login works!
+
+## FILES CHANGED:
+
+✓ V15__add_failed_login_counter.sql (NEW migration)
+✓ User.java (added failedLoginAttempts, lastFailedLogin)
+✓ LoginAttemptService.java (COMPLETELY REWRITTEN - simple counter logic)
+✓ AuthService.java (COMPLETELY REWRITTEN - step-by-step flow)
+✗ AccountAutoUnlockJob.java (NO CHANGES - already perfect)
+✗ UserRepository.java (NO CHANGES - query already exists)
+
+## ADVANTAGES OF NEW APPROACH:
+
+1. NO complex SQL queries counting rows
+2. NO risk of counting old attempts
+3. Counter stored ON the user = always in sync
+4. Simple to understand and debug
+5. Console logs show exact state at every step
+
+========================================================================

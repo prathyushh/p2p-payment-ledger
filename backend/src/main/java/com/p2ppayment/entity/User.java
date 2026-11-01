@@ -1,4 +1,4 @@
-package com.p2ppayment.entity;
+﻿package com.p2ppayment.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -49,6 +49,13 @@ public class User {
 
     @Column
     private LocalDateTime lockedUntil;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Integer failedLoginAttempts = 0;
+
+    @Column
+    private LocalDateTime lastFailedLogin;
 
     @Column(nullable = false)
     private LocalDateTime createdAt;

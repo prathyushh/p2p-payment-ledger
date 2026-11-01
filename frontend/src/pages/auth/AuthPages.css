@@ -1,4 +1,4 @@
-/* Auth Pages CSS - Dark Theme */
+﻿/* Auth Pages CSS - Dark Theme */
 
 .auth-container {
   min-height: 100vh;
@@ -47,6 +47,32 @@
   background-color: rgba(239, 68, 68, 0.15);
   border: 1px solid rgba(239, 68, 68, 0.4);
   color: #fca5a5;
+}
+
+.auth-message.locked {
+  background-color: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  color: #fbbf24;
+}
+
+.auth-message .error-text {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.countdown-timer {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-top: 0.75rem;
+  font-size: 1.125rem;
+  text-align: center;
+  color: #ffffff;
+}
+
+.countdown-timer strong {
+  color: #fbbf24;
+  margin-right: 0.5rem;
 }
 
 .auth-form {

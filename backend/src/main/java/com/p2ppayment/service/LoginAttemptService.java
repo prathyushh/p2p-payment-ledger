@@ -1,4 +1,4 @@
-package com.p2ppayment.service;
+﻿package com.p2ppayment.service;
 
 import com.p2ppayment.entity.LoginAttempt;
 import com.p2ppayment.entity.Notification;
@@ -8,11 +8,16 @@ import com.p2ppayment.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import jakarta.annotation.PostConstruct;
 
 import java.time.LocalDateTime;
 
 @Service
 public class LoginAttemptService {
+
+    private static final Logger logger = LoggerFactory.getLogger(LoginAttemptService.class);
 
     private final LoginAttemptRepository loginAttemptRepository;
     private final UserRepository userRepository;
@@ -24,88 +29,77 @@ public class LoginAttemptService {
     @Value("${app.login-attempt.lockout-minutes:30}")
     private int lockoutMinutes;
 
-    public LoginAttemptService(LoginAttemptRepository loginAttemptRepository, 
-                              UserRepository userRepository,
-                              NotificationService notificationService) {
+    public LoginAttemptService(LoginAttemptRepository loginAttemptRepository,
+                               UserRepository userRepository,
+                               NotificationService notificationService) {
         this.loginAttemptRepository = loginAttemptRepository;
         this.userRepository = userRepository;
         this.notificationService = notificationService;
     }
 
+    @PostConstruct
+    public void logConfiguration() {
+        logger.info("=================================================================");
+        logger.info("[LOGIN-SECURITY] Service Ready - Max Failures: {}, Lockout: {} min",
+                    maxFailedAttempts, lockoutMinutes);
+        logger.info("=================================================================");
+    }
+
     @Transactional
     public void recordFailedAttempt(User user, String ipAddress) {
-        // Record the failed attempt
-        LoginAttempt attempt = LoginAttempt.builder()
+        // Step 1: Increment counter directly in DB (no JPA caching issues)
+        userRepository.incrementFailedLoginAttempts(user.getId());
+
+        // Step 2: Read the NEW count back from DB
+        int newCount = userRepository.getFailedLoginAttempts(user.getId());
+
+        logger.info("[LOGIN-SECURITY] User {} failure count: {}/{}", user.getEmail(), newCount, maxFailedAttempts);
+
+        // Step 3: Save audit record
+        loginAttemptRepository.save(LoginAttempt.builder()
                 .user(user)
                 .success(false)
                 .ipAddress(ipAddress)
-                .build();
+                .build());
 
-        loginAttemptRepository.save(attempt);
+        // Step 4: Lock if threshold reached
+        if (newCount >= maxFailedAttempts) {
+            LocalDateTime lockUntil = LocalDateTime.now().plusMinutes(lockoutMinutes);
+            userRepository.lockAccount(user.getId(), lockUntil);
+            logger.warn("[LOGIN-SECURITY] *** ACCOUNT LOCKED *** {} until {}", user.getEmail(), lockUntil);
 
-        // Count failures in the last lockout period
-        LocalDateTime since = LocalDateTime.now().minusMinutes(lockoutMinutes);
-        long recentFailures = loginAttemptRepository.countRecentFailedAttempts(user, since);
-
-        // Lock account if max failures reached
-        if (recentFailures >= maxFailedAttempts) {
-            user.setAccountLocked(true);
-            user.setLockedUntil(LocalDateTime.now().plusMinutes(lockoutMinutes));
-            userRepository.save(user);
-            
-            // Create notification for account lock
             try {
                 notificationService.create(
                     user.getId(),
                     Notification.Type.ACCOUNT_LOCKED,
                     "Account Locked",
-                    "Your account has been locked due to " + maxFailedAttempts + " failed login attempts. It will be automatically unlocked in " + lockoutMinutes + " minutes."
+                    "Your account has been locked due to " + maxFailedAttempts +
+                    " consecutive failed login attempts. It will automatically unlock in " +
+                    lockoutMinutes + " minutes."
                 );
             } catch (Exception e) {
-                // Log but do not fail the login attempt if notification creation fails
+                logger.error("[LOGIN-SECURITY] Could not send lock notification", e);
             }
         }
     }
 
     @Transactional
     public void recordSuccessfulAttempt(User user, String ipAddress) {
-        // Record successful login
-        LoginAttempt attempt = LoginAttempt.builder()
+        // Reset counter directly in DB
+        userRepository.resetFailedLoginAttempts(user.getId());
+
+        logger.info("[LOGIN-SECURITY] Successful login - counter reset for {}", user.getEmail());
+
+        loginAttemptRepository.save(LoginAttempt.builder()
                 .user(user)
                 .success(true)
                 .ipAddress(ipAddress)
-                .build();
-
-        loginAttemptRepository.save(attempt);
-
-        // Reset lock if account was previously locked
-        if (user.getAccountLocked() && user.getLockedUntil() != null) {
-            if (LocalDateTime.now().isAfter(user.getLockedUntil())) {
-                user.setAccountLocked(false);
-                user.setLockedUntil(null);
-                userRepository.save(user);
-            }
-        }
-    }
-
-    @Transactional(readOnly = true)
-    public boolean isAccountLocked(User user) {
-        if (!user.getAccountLocked()) {
-            return false;
-        }
-
-        // If lockout has expired, account is no longer locked
-        if (user.getLockedUntil() != null && LocalDateTime.now().isAfter(user.getLockedUntil())) {
-            return false;
-        }
-
-        return true;
+                .build());
     }
 
     @Transactional
     public void unlockAccount(User user) {
-        user.setAccountLocked(false);
-        user.setLockedUntil(null);
-        userRepository.save(user);
+        userRepository.unlockAccount(user.getId());
+        logger.info("[LOGIN-SECURITY] Account unlocked for {}", user.getEmail());
     }
 }

@@ -1,4 +1,4 @@
-package com.p2ppayment.service;
+﻿package com.p2ppayment.service;
 
 import com.p2ppayment.dto.AuthRequest;
 import com.p2ppayment.dto.AuthResponse;
@@ -15,11 +15,16 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Service
 public class AuthService {
+
+    private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
 
     private final UserRepository userRepository;
     private final WalletRepository walletRepository;
@@ -39,63 +44,57 @@ public class AuthService {
 
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
-        // Normalize email: trim and lowercase
         String normalizedEmail = request.email().trim().toLowerCase();
-        
+
         if (userRepository.existsByEmail(normalizedEmail)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already registered");
         }
-
         if (userRepository.existsByPhoneNumber(request.phoneNumber())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Phone number already registered");
         }
-
-        String hashedPassword = passwordEncoder.encode(request.password());
-        String hashedPin = passwordEncoder.encode(request.transactionPin());
 
         User user = User.builder()
                 .name(request.name())
                 .email(normalizedEmail)
                 .phoneNumber(request.phoneNumber())
-                .password(hashedPassword)
-                .transactionPin(hashedPin)
+                .password(passwordEncoder.encode(request.password()))
+                .transactionPin(passwordEncoder.encode(request.transactionPin()))
                 .role(User.Role.USER)
                 .enabled(true)
                 .accountLocked(false)
+                .failedLoginAttempts(0)
                 .build();
 
         user = userRepository.save(user);
 
-        Wallet wallet = Wallet.builder()
+        walletRepository.save(Wallet.builder()
                 .user(user)
                 .balance(BigDecimal.ZERO)
                 .dailySpent(BigDecimal.ZERO)
                 .status(Wallet.Status.ACTIVE)
-                .build();
-
-        walletRepository.save(wallet);
+                .build());
 
         String token = jwtTokenProvider.generateToken(user.getId(), user.getEmail(), user.getRole().name());
-
         return new RegisterResponse(token, user.getId(), user.getName(), user.getEmail(), user.getRole().name());
     }
 
-    @Transactional
+    // NO @Transactional here - each DB call must commit independently
     public AuthResponse login(AuthRequest request) {
-        // Normalize email: trim and lowercase
         String normalizedEmail = request.email().trim().toLowerCase();
-        
+        logger.info("[AUTH] Login attempt for: {}", normalizedEmail);
+
         User user = userRepository.findByEmail(normalizedEmail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
 
-        // Check if account is locked (and handle auto-unlock if lockout period expired)
-        if (loginAttemptService.isAccountLocked(user)) {
-            // Attempt to auto-unlock if lockout period has expired
-            if (user.getLockedUntil() != null && java.time.LocalDateTime.now().isAfter(user.getLockedUntil())) {
+        // Check if account is locked
+        if (Boolean.TRUE.equals(user.getAccountLocked())) {
+            if (user.getLockedUntil() != null && LocalDateTime.now().isAfter(user.getLockedUntil())) {
+                logger.info("[AUTH] Lock expired for {}, unlocking", user.getEmail());
                 loginAttemptService.unlockAccount(user);
             } else {
-                throw new ResponseStatusException(HttpStatus.LOCKED, 
-                    "Account is locked until " + user.getLockedUntil());
+                logger.warn("[AUTH] Account LOCKED for {} until {}", user.getEmail(), user.getLockedUntil());
+                throw new ResponseStatusException(HttpStatus.LOCKED,
+                        "Account is locked until " + user.getLockedUntil());
             }
         }
 
@@ -103,18 +102,28 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Account is disabled");
         }
 
-        // Validate password
+        // Check password
         if (!passwordEncoder.matches(request.password(), user.getPassword())) {
-            // Record failed attempt and potentially lock account
+            logger.warn("[AUTH] Wrong password for {}", user.getEmail());
+
+            // This commits its own transaction independently
             loginAttemptService.recordFailedAttempt(user, request.ipAddress());
+
+            // Reload fresh from DB to see if just locked
+            user = userRepository.findByEmail(normalizedEmail).orElseThrow();
+            if (Boolean.TRUE.equals(user.getAccountLocked())) {
+                logger.warn("[AUTH] Account JUST LOCKED for {} until {}", user.getEmail(), user.getLockedUntil());
+                throw new ResponseStatusException(HttpStatus.LOCKED,
+                        "Account is locked until " + user.getLockedUntil());
+            }
+
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
 
-        // Record successful attempt
+        logger.info("[AUTH] Successful login for {}", user.getEmail());
         loginAttemptService.recordSuccessfulAttempt(user, request.ipAddress());
 
         String token = jwtTokenProvider.generateToken(user.getId(), user.getEmail(), user.getRole().name());
-
         return new AuthResponse(token, user.getId(), user.getName(), user.getEmail(), user.getRole().name());
     }
 
@@ -122,7 +131,6 @@ public class AuthService {
     public UserResponse getCurrentUser(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-
         return new UserResponse(user.getId(), user.getName(), user.getEmail(), user.getPhoneNumber(), user.getRole().name());
     }
 }

@@ -1,4 +1,4 @@
-package com.p2ppayment.repository;
+﻿package com.p2ppayment.repository;
 
 import com.p2ppayment.entity.LoginAttempt;
 import com.p2ppayment.entity.User;
@@ -19,4 +19,10 @@ public interface LoginAttemptRepository extends JpaRepository<LoginAttempt, Long
     @Query("SELECT COUNT(la) FROM LoginAttempt la WHERE la.user = :user AND la.success = false " +
            "AND la.attemptTime > :since")
     long countRecentFailedAttempts(User user, LocalDateTime since);
+
+    /**
+     * Get all login attempts for a user, ordered by time (most recent first).
+     * Used to count consecutive failures.
+     */
+    List<LoginAttempt> findByUserOrderByAttemptTimeDesc(User user);
 }

@@ -1,4 +1,4 @@
-import axios from 'axios';
+﻿import axios from 'axios';
 
 const axiosClient = axios.create({
   baseURL: '/api',
@@ -14,13 +14,19 @@ axiosClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle 401: clear token and redirect to login
+// Handle 401: only redirect if NOT on the login page
+// (login page needs to see 401 to show "Invalid credentials" message)
 axiosClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('jwt_token');
-      window.location.href = '/login';
+      const isLoginRequest = error.config?.url?.includes('/auth/login');
+      if (!isLoginRequest) {
+        // 401 on a non-login request = expired token, redirect to login
+        localStorage.removeItem('jwt_token');
+        window.location.href = '/login';
+      }
+      // For login requests, let the error propagate to the catch block
     }
     return Promise.reject(error);
   }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNotifications } from '../../context/NotificationContext';
 import * as notificationApi from '../../api/notificationApi';
 import './UserPages.css';
@@ -95,20 +95,20 @@ export default function NotificationsPage() {
 
   const getNotificationIcon = (type) => {
     const icons = {
-      'TRANSACTION_INITIATED': '??',
-      'TRANSACTION_RECEIVED': '?',
-      'TRANSACTION_SETTLED': '?',
-      'TRANSACTION_FAILED': '?',
-      'WALLET_STATUS_CHANGED': '??',
-      'DAILY_LIMIT_REACHED': '?',
-      'FRAUD_ALERT': '??',
-      'AUTO_RELOAD_TRIGGERED': '??',
-      'SETTLEMENT_COMPLETED': '??',
-      'ACCOUNT_LOCKED': '??',
-      'ACCOUNT_UNLOCKED': '??',
-      'ADMIN_ACTION': '??',
+      'TRANSACTION_INITIATED': '💸',
+      'TRANSACTION_RECEIVED': '💰',
+      'TRANSACTION_SETTLED': '✅',
+      'TRANSACTION_FAILED': '❌',
+      'WALLET_STATUS_CHANGED': '👛',
+      'DAILY_LIMIT_REACHED': '⚠️',
+      'FRAUD_ALERT': '🚨',
+      'AUTO_RELOAD_TRIGGERED': '🔄',
+      'SETTLEMENT_COMPLETED': '✔️',
+      'ACCOUNT_LOCKED': '🔒',
+      'ACCOUNT_UNLOCKED': '🔓',
+      'ADMIN_ACTION': '⚙️',
     };
-    return icons[type] || '??';
+    return icons[type] || '📬';
   };
 
   if (loading && notifications.length === 0) {
@@ -147,7 +147,7 @@ export default function NotificationsPage() {
       {/* Notifications list */}
       {notifications.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-icon">??</div>
+          <div className="empty-icon">📭</div>
           <h3>No Notifications</h3>
           <p>You are all caught up!</p>
         </div>
@@ -220,3 +220,5 @@ export default function NotificationsPage() {
     </div>
   );
 }
+
+

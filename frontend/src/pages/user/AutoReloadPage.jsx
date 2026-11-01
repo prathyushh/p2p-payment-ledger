@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import * as autoReloadApi from '../../api/autoReloadApi';
 import * as bankAccountApi from '../../api/bankAccountApi';
 import './AutoReloadPage.css';
@@ -189,19 +189,22 @@ export default function AutoReloadPage() {
         <form onSubmit={handleSubmit}>
           {/* Enable/Disable Toggle */}
           <div className="form-group toggle-group">
-            <label className="toggle-label">
-              <input
-                type="checkbox"
-                checked={formData.isEnabled}
-                onChange={(e) =>
-                  setFormData({ ...formData, isEnabled: e.target.checked })
-                }
-              />
-              <span className="toggle-switch" />
-              <span className="toggle-text">
-                {formData.isEnabled ? 'Auto Reload Enabled' : 'Auto Reload Disabled'}
-              </span>
-            </label>
+            <div className="button-group-toggle">
+              <button
+                type="button"
+                className={`toggle-btn ${!formData.isEnabled ? 'active' : ''}`}
+                onClick={() => setFormData({ ...formData, isEnabled: false })}
+              >
+                Disabled
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn ${formData.isEnabled ? 'active' : ''}`}
+                onClick={() => setFormData({ ...formData, isEnabled: true })}
+              >
+                Enabled
+              </button>
+            </div>
             <p className="toggle-hint">
               {formData.isEnabled
                 ? 'Your wallet will automatically reload when balance drops below the threshold'

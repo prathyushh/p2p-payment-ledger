@@ -1,4 +1,4 @@
-import { useNavigate, useLocation } from 'react-router-dom';
+﻿import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { useEffect } from 'react';
@@ -36,7 +36,7 @@ export default function Header() {
           {/* Show admin link only for admins, unless on admin page */}
           {user.role === 'ADMIN' && !isAdminPage && (
             <a href="/admin/dashboard" className="nav-link admin-link">
-              ?? Admin Panel
+              🔧 Admin Panel
             </a>
           )}
           
@@ -55,7 +55,7 @@ export default function Header() {
           {/* Show back to user dashboard link if on admin page */}
           {isAdminPage && (
             <a href="/dashboard" className="nav-link back-link">
-              ? Back to Dashboard
+              ← Back to Dashboard
             </a>
           )}
         </nav>
@@ -66,7 +66,7 @@ export default function Header() {
             onClick={() => navigate('/notifications')}
             title="View notifications"
           >
-            <span style={{ fontSize: '1.5em' }}>{'??'}</span>
+            <span style={{ fontSize: '1.5em' }}>🔔</span>
             {unreadCount > 0 && (
               <span className="unread-badge">
                 {unreadCount > 99 ? '99+' : unreadCount}

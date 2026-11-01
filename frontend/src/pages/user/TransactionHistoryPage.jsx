@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import * as transactionApi from '../../api/transactionApi';
 import './UserPages.css';
@@ -128,7 +128,7 @@ export default function TransactionHistoryPage() {
       <div className="user-page transaction-detail-page">
         <div className="detail-header">
           <button className="btn-back" onClick={() => setSelectedTransaction(null)}>
-            {String.fromCharCode(8592)} Back to History
+            ← Back to History
           </button>
           <h1>Transaction Detail</h1>
         </div>
@@ -305,7 +305,7 @@ export default function TransactionHistoryPage() {
       {/* Empty state */}
       {!loading && filteredTransactions.length === 0 && (
         <div className="empty-state">
-          <div className="empty-icon">?</div>
+          <div className="empty-icon">📭</div>
           <h3>No Transactions Found</h3>
           <p>
             {statusFilter !== 'ALL' || typeFilter !== 'ALL'
@@ -333,7 +333,7 @@ export default function TransactionHistoryPage() {
             {filteredTransactions.map((tx) => (
               <div key={tx.id} className="transaction-item">
                 <div className="transaction-icon">
-                  {isSender(tx) ? (String.fromCharCode(8594)) : (String.fromCharCode(8592))}
+                  {isSender(tx) ? '💸' : '💰'}
                 </div>
                 <div className="transaction-info">
                   <div className="transaction-header">

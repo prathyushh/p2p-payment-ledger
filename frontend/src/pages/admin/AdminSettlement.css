@@ -1,233 +1,251 @@
-﻿.admin-settlement {
-  padding: 2rem;
-  max-width: 1400px;
+﻿/* Admin Settlement Page Styles */
+
+.admin-settlement {
+  max-width: 1600px;
   margin: 0 auto;
 }
 
 .admin-settlement h1 {
-  margin-bottom: 2rem;
-  color: #333;
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 2.5rem;
+  color: #1a202c !important;
+  letter-spacing: -0.02em;
+  padding-bottom: 1rem;
+  border-bottom: 3px solid var(--accent);
 }
 
+.admin-settlement h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 2.5rem 0 1.5rem 0;
+  color: #1a202c !important;
+}
+
+/* Loading & Error States */
 .settlement-loading,
 .settlement-error {
-  padding: 2rem;
+  padding: 2.5rem;
   margin: 2rem 0;
-  border-radius: 8px;
-  font-size: 1rem;
+  border-radius: 12px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  text-align: center;
+  border: 2px solid;
 }
 
 .settlement-loading {
   background-color: #e3f2fd;
-  color: #1976d2;
+  color: #1976d2 !important;
+  border-color: #90caf9;
 }
 
 .settlement-error {
   background-color: #ffebee;
-  color: #c62828;
+  color: #c62828 !important;
+  border-color: #ef5350;
 }
 
-/* Queue Summary */
+/* Queue Summary Cards */
 .queue-summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 1.5rem;
-  margin-bottom: 2rem;
+  margin-bottom: 2.5rem;
 }
 
 .queue-card {
   background: white;
-  border: 2px solid #e0e0e0;
-  border-radius: 8px;
-  padding: 1.5rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  text-align: center;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1.75rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s;
 }
 
-.queue-card h3 {
-  margin: 0 0 0.5rem 0;
-  font-size: 0.9rem;
-  color: #666;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.queue-card .count {
-  margin: 0.5rem 0;
-  font-size: 2rem;
-  font-weight: bold;
-  color: #333;
-}
-
-.queue-card .amount {
-  margin: 0.5rem 0 0 0;
-  font-size: 1.1rem;
-  color: #666;
+.queue-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 16px rgba(170, 59, 255, 0.2);
 }
 
 .queue-card.overdue {
-  border-left: 4px solid #f44336;
-  background-color: #ffebee;
-}
-
-.queue-card.overdue .count {
-  color: #c62828;
+  border-color: #fca5a5;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.05), rgba(220, 38, 38, 0.05));
 }
 
 .queue-card.due-today {
-  border-left: 4px solid #ff9800;
-  background-color: #fff3e0;
-}
-
-.queue-card.due-today .count {
-  color: #e65100;
+  border-color: #fcd34d;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.05), rgba(217, 119, 6, 0.05));
 }
 
 .queue-card.due-tomorrow {
-  border-left: 4px solid #2196f3;
-  background-color: #e3f2fd;
-}
-
-.queue-card.due-tomorrow .count {
-  color: #1565c0;
+  border-color: #93c5fd;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(37, 99, 235, 0.05));
 }
 
 .queue-card.total {
-  border-left: 4px solid #4caf50;
-  background-color: #e8f5e9;
+  border-color: #c084fc;
+  background: linear-gradient(135deg, rgba(170, 59, 255, 0.05), rgba(147, 51, 234, 0.05));
 }
 
-.queue-card.total .count {
-  color: #2e7d32;
+.queue-card h3 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.875rem;
+  color: #64748b !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+}
+
+.queue-card .count {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: #1a202c !important;
+  margin: 0 0 0.5rem 0;
+  line-height: 1;
+}
+
+.queue-card .amount {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1a202c !important;
+  margin: 0;
 }
 
 /* Pending Sections */
 .pending-sections {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 2.5rem;
 }
 
 .pending-section {
-  background: white;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  padding: 1.5rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.overdue-section {
-  border-left: 4px solid #f44336;
-  background-color: #fffbf9;
-}
-
-.pending-section h2 {
-  margin-top: 0;
-  margin-bottom: 1.5rem;
-  color: #333;
-  font-size: 1.1rem;
-}
-
-.overdue-section h2 {
-  color: #c62828;
+  margin-bottom: 2rem;
 }
 
 /* Table Container */
 .table-container {
-  overflow: auto;
+  background: white;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  margin-bottom: 1rem;
 }
 
+/* Settlement Table */
 .settlement-table {
   width: 100%;
   border-collapse: collapse;
+  font-size: 0.95rem;
 }
 
 .settlement-table thead {
-  background-color: #f5f5f5;
-  border-bottom: 2px solid #ddd;
+  background: linear-gradient(135deg, rgba(170, 59, 255, 0.1), rgba(147, 51, 234, 0.1));
+  border-bottom: 2px solid #e2e8f0;
 }
 
 .settlement-table th {
-  padding: 1rem;
+  padding: 1.25rem 1rem;
   text-align: left;
-  font-weight: 600;
-  color: #333;
-  font-size: 0.9rem;
+  font-weight: 700;
+  color: #1a202c !important;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
 }
 
-.settlement-table td {
-  padding: 1rem;
-  border-bottom: 1px solid #eee;
-  font-size: 0.85rem;
-  color: #555;
+.settlement-table tbody tr {
+  border-bottom: 1px solid #e2e8f0;
+  transition: background 0.2s;
 }
 
 .settlement-table tbody tr:hover {
-  background-color: #f9f9f9;
+  background: rgba(170, 59, 255, 0.03);
 }
 
-.overdue-row {
-  background-color: #ffebee;
+.settlement-table tbody tr:last-child {
+  border-bottom: none;
 }
 
-.overdue-row:hover {
-  background-color: #ffcdd2;
+.settlement-table tbody tr.overdue-row {
+  background: rgba(239, 68, 68, 0.05);
 }
 
-/* Badges */
+.settlement-table tbody tr.overdue-row:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.settlement-table td {
+  padding: 1.25rem 1rem;
+  color: #1a202c !important;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+/* Overdue Badge */
 .overdue-badge {
   display: inline-block;
-  padding: 0.4rem 0.8rem;
-  background-color: #f44336;
-  color: white;
+  padding: 0.375rem 0.875rem;
   border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 500;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(239, 68, 68, 0.2);
+  color: #dc2626 !important;
+  border: 1px solid rgba(239, 68, 68, 0.5);
 }
 
-/* Action Buttons */
+/* Trigger Button */
 .btn-trigger {
-  padding: 0.5rem 1rem;
-  background-color: #1976d2;
-  color: white;
+  padding: 0.625rem 1.25rem;
   border: none;
-  border-radius: 4px;
-  font-size: 0.85rem;
-  font-weight: 500;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(16, 185, 129, 0.15);
+  color: #059669 !important;
+  border: 2px solid rgba(16, 185, 129, 0.4);
 }
 
 .btn-trigger:hover:not(:disabled) {
-  background-color: #1565c0;
+  background: #059669;
+  color: white !important;
+  border-color: #059669;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
 }
 
 .btn-trigger:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
 }
 
-/* Responsive */
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .queue-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
-  .admin-settlement {
-    padding: 1rem;
+  .admin-settlement h1 {
+    font-size: 1.75rem;
   }
 
   .queue-summary {
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 1rem;
-  }
-
-  .queue-card {
-    padding: 1rem;
+    grid-template-columns: 1fr;
   }
 
   .queue-card .count {
-    font-size: 1.5rem;
-  }
-
-  .pending-section {
-    padding: 1rem;
+    font-size: 2rem;
   }
 
   .table-container {
@@ -235,11 +253,12 @@
   }
 
   .settlement-table {
-    min-width: 700px;
+    font-size: 0.8rem;
+    min-width: 900px;
   }
 
   .settlement-table th,
   .settlement-table td {
-    padding: 0.75rem;
+    padding: 0.875rem 0.5rem;
   }
 }

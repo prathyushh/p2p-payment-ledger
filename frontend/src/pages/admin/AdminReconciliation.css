@@ -1,62 +1,84 @@
-﻿.admin-reconciliation {
-  padding: 2rem;
-  max-width: 1200px;
+﻿/* Admin Reconciliation Page Styles */
+
+.admin-reconciliation {
+  max-width: 1600px;
   margin: 0 auto;
 }
 
 .admin-reconciliation h1 {
-  margin-bottom: 0.5rem;
-  color: #333;
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  color: #1a202c !important;
+  letter-spacing: -0.02em;
+  padding-bottom: 1rem;
+  border-bottom: 3px solid var(--accent);
+}
+
+.admin-reconciliation h2 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 3rem 0 1.5rem 0;
+  color: #1a202c !important;
 }
 
 .date-label {
-  color: #999;
-  font-size: 0.9rem;
-  margin-bottom: 1.5rem;
+  font-size: 1.125rem;
+  color: #64748b !important;
+  margin-bottom: 2rem;
+  font-weight: 600;
 }
 
+/* Loading & Error States */
 .recon-loading,
 .recon-error {
-  padding: 2rem;
+  padding: 2.5rem;
   margin: 2rem 0;
-  border-radius: 8px;
-  font-size: 1rem;
+  border-radius: 12px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  text-align: center;
+  border: 2px solid;
 }
 
 .recon-loading {
   background-color: #e3f2fd;
-  color: #1976d2;
+  color: #1976d2 !important;
+  border-color: #90caf9;
 }
 
 .recon-error {
   background-color: #ffebee;
-  color: #c62828;
+  color: #c62828 !important;
+  border-color: #ef5350;
 }
 
 /* Mismatch Alert */
 .mismatch-alert {
-  background-color: #fff3e0;
-  border: 2px solid #ff9800;
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin-bottom: 2rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 2px solid rgba(239, 68, 68, 0.4);
+  border-radius: 12px;
+  padding: 1.75rem;
+  margin-bottom: 2.5rem;
 }
 
 .mismatch-alert h3 {
-  margin-top: 0;
-  margin-bottom: 0.5rem;
-  color: #e65100;
-  font-size: 1.1rem;
+  margin: 0 0 0.75rem 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #dc2626 !important;
 }
 
 .mismatch-alert p {
   margin: 0.5rem 0;
-  color: #666;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1a202c !important;
 }
 
 .mismatch-alert .alert-text {
-  font-weight: 500;
-  color: #e65100;
+  font-style: italic;
+  color: #dc2626 !important;
 }
 
 /* Reconciliation Grid */
@@ -64,31 +86,39 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 1.5rem;
-  margin-bottom: 2rem;
+  margin-bottom: 3rem;
 }
 
 .recon-card {
   background: white;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  padding: 1.5rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1.75rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s;
+}
+
+.recon-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 16px rgba(170, 59, 255, 0.2);
 }
 
 .recon-card h3 {
-  margin-top: 0;
-  margin-bottom: 1rem;
-  font-size: 0.95rem;
-  color: #333;
-  font-weight: 600;
+  margin: 0 0 1rem 0;
+  font-size: 0.875rem;
+  color: #64748b !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
 }
 
 .metric {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid #f0f0f0;
+  margin: 0.75rem 0;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .metric:last-child {
@@ -96,118 +126,109 @@
 }
 
 .metric .label {
-  color: #666;
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 0.95rem;
+  color: #64748b !important;
+  font-weight: 600;
 }
 
 .metric .value {
-  color: #333;
-  font-size: 0.95rem;
-  font-weight: 600;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #1a202c !important;
 }
 
 /* Ledger Summary */
 .ledger-summary {
-  background: white;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  padding: 2rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  margin-bottom: 2rem;
-}
-
-.ledger-summary h2 {
-  margin-top: 0;
-  margin-bottom: 1.5rem;
-  color: #333;
-  font-size: 1.2rem;
+  margin-top: 3rem;
 }
 
 .ledger-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.75rem;
 }
 
 .ledger-card {
-  background-color: #f9f9f9;
-  border: 2px solid #e0e0e0;
-  border-radius: 8px;
-  padding: 1.5rem;
+  background: white;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 2rem;
   text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 .ledger-card h3 {
-  margin: 0 0 0.5rem 0;
-  font-size: 0.9rem;
-  color: #666;
+  margin: 0 0 1rem 0;
+  font-size: 0.875rem;
+  color: #64748b !important;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.05em;
+  font-weight: 700;
 }
 
 .ledger-card .amount {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: #333;
-}
-
-.ledger-card.debit {
-  border-color: #f44336;
-  background-color: #ffebee;
-}
-
-.ledger-card.debit .amount {
-  color: #c62828;
-}
-
-.ledger-card.credit {
-  border-color: #4caf50;
-  background-color: #e8f5e9;
-}
-
-.ledger-card.credit .amount {
-  color: #2e7d32;
-}
-
-.ledger-card.mismatch {
-  border-color: #999;
-}
-
-.ledger-card.mismatch.alert {
-  border-color: #ff9800;
-  background-color: #fff3e0;
-}
-
-.ledger-card.mismatch.alert .amount {
-  color: #e65100;
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: #1a202c !important;
+  margin: 0.5rem 0;
+  line-height: 1;
 }
 
 .ledger-card .status {
-  margin: 0.5rem 0 0 0;
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: #666;
+  margin: 1rem 0 0 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1a202c !important;
+}
+
+.ledger-card.debit {
+  border-color: #fca5a5;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.05), rgba(220, 38, 38, 0.05));
+}
+
+.ledger-card.credit {
+  border-color: #86efac;
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.05), rgba(22, 163, 74, 0.05));
+}
+
+.ledger-card.mismatch {
+  border-color: #93c5fd;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(37, 99, 235, 0.05));
+}
+
+.ledger-card.mismatch.alert {
+  border-color: #fca5a5;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.1));
+}
+
+.ledger-card.mismatch.alert .amount {
+  color: #dc2626 !important;
 }
 
 .ledger-card.mismatch.alert .status {
-  color: #e65100;
+  color: #dc2626 !important;
 }
 
 /* Last Updated */
 .last-updated {
+  margin-top: 3rem;
+  padding: 1.25rem;
+  background: rgba(170, 59, 255, 0.05);
+  border-radius: 8px;
   text-align: center;
-  padding: 1rem;
-  color: #999;
-  font-size: 0.85rem;
-  margin-top: 2rem;
 }
 
-/* Responsive */
+.last-updated p {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #64748b !important;
+  font-weight: 600;
+}
+
+/* Responsive Design */
 @media (max-width: 768px) {
-  .admin-reconciliation {
-    padding: 1rem;
+  .admin-reconciliation h1 {
+    font-size: 1.75rem;
   }
 
   .recon-grid {
@@ -218,12 +239,7 @@
     grid-template-columns: 1fr;
   }
 
-  .recon-card,
-  .ledger-card {
-    padding: 1rem;
-  }
-
-  .ledger-summary {
-    padding: 1rem;
+  .ledger-card .amount {
+    font-size: 2rem;
   }
 }

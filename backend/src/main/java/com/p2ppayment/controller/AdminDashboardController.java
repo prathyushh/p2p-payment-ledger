@@ -50,21 +50,40 @@ public class AdminDashboardController {
         BigDecimal pendingSettlementAmount = transactionRepository.sumPendingSettlementAmount();
         Long pendingFraudAlerts = fraudAlertRepository.countPendingAlerts();
 
-        // Get last 30 days daily volume from daily_summary table
+        // Get last 30 days daily volume - ALWAYS show all 30 days with live data
         List<AdminDashboardStatsResponse.DailyVolumeData> last30Days = new ArrayList<>();
         LocalDate endDate = today;
-        for (int i = 0; i < 30; i++) {
+        
+        for (int i = 29; i >= 0; i--) {  // Start from 29 days ago to today
             LocalDate date = endDate.minusDays(i);
+            
+            // Try to get from daily_summary first (for historical accuracy)
+            boolean foundInSummary = false;
             try {
-                dailySummaryRepository.findBySummaryDate(date).ifPresent(summary -> {
+                var summaryOpt = dailySummaryRepository.findBySummaryDate(date);
+                if (summaryOpt.isPresent()) {
+                    var summary = summaryOpt.get();
                     last30Days.add(AdminDashboardStatsResponse.DailyVolumeData.builder()
                             .date(date.toString())
                             .volume(summary.getTotalTransfersSettledAmount())
                             .transactionCount((long) summary.getTotalTransfersSettled())
                             .build());
-                });
+                    foundInSummary = true;
+                }
             } catch (Exception e) {
-                // Skip if no summary for date
+                // Continue to live calculation
+            }
+            
+            // If not in summary, calculate from live transaction data
+            if (!foundInSummary) {
+                Long settledCount = transactionRepository.countSettledTransactionsForDate(date);
+                BigDecimal settledAmount = transactionRepository.sumSettledAmountForDate(date);
+                
+                last30Days.add(AdminDashboardStatsResponse.DailyVolumeData.builder()
+                        .date(date.toString())
+                        .volume(settledAmount != null ? settledAmount : BigDecimal.ZERO)
+                        .transactionCount(settledCount != null ? settledCount : 0L)
+                        .build());
             }
         }
 

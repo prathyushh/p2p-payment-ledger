@@ -7,22 +7,32 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const loadStats = async () => {
+    try {
+      setLoading(true);
+      const response = await getDashboardStats();
+      setStats(response.data);
+      setLastUpdated(new Date());
+      setError(null);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to load dashboard stats');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadStats = async () => {
-      try {
-        setLoading(true);
-        const response = await getDashboardStats();
-        setStats(response.data);
-        setError(null);
-      } catch (err) {
-        setError(err.response?.data?.message || 'Failed to load dashboard stats');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadStats();
+    
+    // Auto-refresh every 30 seconds for live data
+    const intervalId = setInterval(() => {
+      loadStats();
+    }, 30000);
+
+    // Cleanup interval on unmount
+    return () => clearInterval(intervalId);
   }, []);
 
   if (loading) return <div className='admin-dashboard-loading'>Loading dashboard...</div>;
@@ -37,7 +47,24 @@ export default function AdminDashboard() {
 
   return (
     <div className='admin-dashboard'>
-      <h1>Admin Dashboard</h1>
+      <div className='dashboard-header'>
+        <h1>Admin Dashboard</h1>
+        <div className='dashboard-controls'>
+          {lastUpdated && (
+            <span className='last-updated'>
+              Last updated: {lastUpdated.toLocaleTimeString()}
+            </span>
+          )}
+          <button 
+            onClick={loadStats} 
+            disabled={loading}
+            className='btn-refresh'
+            title='Refresh dashboard data'
+          >
+            🔄 Refresh
+          </button>
+        </div>
+      </div>
 
       {/* Stats Cards */}
       <div className='stats-grid'>
@@ -93,11 +120,14 @@ export default function AdminDashboard() {
                 stroke='#8884d8' 
                 dot={{ fill: '#8884d8' }}
                 activeDot={{ r: 6 }}
+                name='Transaction Volume'
               />
             </LineChart>
           </ResponsiveContainer>
         ) : (
-          <p>No chart data available</p>
+          <div className='chart-loading'>
+            <p>Loading chart data...</p>
+          </div>
         )}
       </div>
     </div>

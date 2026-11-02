@@ -1,4 +1,4 @@
-﻿package com.p2ppayment.controller;
+package com.p2ppayment.controller;
 
 import com.p2ppayment.dto.AdminFraudActionRequest;
 import com.p2ppayment.dto.FraudAlertResponse;

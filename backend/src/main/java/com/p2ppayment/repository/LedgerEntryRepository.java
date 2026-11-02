@@ -1,4 +1,4 @@
-﻿package com.p2ppayment.repository;
+package com.p2ppayment.repository;
 
 import com.p2ppayment.entity.LedgerEntry;
 import org.springframework.data.jpa.repository.JpaRepository;

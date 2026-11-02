@@ -1,4 +1,4 @@
-﻿package com.p2ppayment.security;
+package com.p2ppayment.security;
 
 import com.p2ppayment.entity.User;
 import org.springframework.security.core.GrantedAuthority;

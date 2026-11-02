@@ -1,4 +1,4 @@
-﻿package com.p2ppayment.scheduler;
+package com.p2ppayment.scheduler;
 
 import com.p2ppayment.entity.DailySummary;
 import com.p2ppayment.entity.Notification;

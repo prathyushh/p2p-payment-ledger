@@ -1,4 +1,4 @@
-﻿package com.p2ppayment.dto;
+package com.p2ppayment.dto;
 
 public record FraudAlertResponse(
     Long id,

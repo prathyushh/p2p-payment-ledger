@@ -5,6 +5,7 @@ import com.p2ppayment.dto.SettlementQueueResponse;
 import com.p2ppayment.entity.Transaction;
 import com.p2ppayment.entity.User;
 import com.p2ppayment.repository.TransactionRepository;
+import com.p2ppayment.repository.UserRepository;
 import com.p2ppayment.security.JwtAuthenticationToken;
 import com.p2ppayment.service.AuditService;
 import com.p2ppayment.service.SettlementService;
@@ -30,13 +31,16 @@ public class AdminSettlementController {
     private final TransactionRepository transactionRepository;
     private final SettlementService settlementService;
     private final AuditService auditService;
+    private final UserRepository userRepository;
 
     public AdminSettlementController(TransactionRepository transactionRepository,
                                    SettlementService settlementService,
-                                   AuditService auditService) {
+                                   AuditService auditService,
+                                   UserRepository userRepository) {
         this.transactionRepository = transactionRepository;
         this.settlementService = settlementService;
         this.auditService = auditService;
+        this.userRepository = userRepository;
     }
 
     /**
@@ -146,11 +150,15 @@ public class AdminSettlementController {
             JwtAuthenticationToken jwtAuth = (JwtAuthenticationToken) authentication;
             String adminEmail = jwtAuth.getEmail();
             
+            // Fetch the actual admin user from database
+            User adminUser = userRepository.findByEmail(adminEmail)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Admin user not found"));
+            
             // Log the manual settlement trigger action
             String details = "Manual settlement triggered by admin for transaction " + id + 
                     " (Amount: " + transaction.getAmount() + ")";
             auditService.logAction("SETTLEMENT_TRIGGER", "TRANSACTION", id, 
-                    new User() {{ setEmail(adminEmail); }}, details, request.getRemoteAddr());
+                    adminUser, details, request.getRemoteAddr());
 
             // Settle the transaction
             settlementService.settleTransaction(transaction);

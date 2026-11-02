@@ -1,4 +1,4 @@
-﻿package com.p2ppayment.entity;
+package com.p2ppayment.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;

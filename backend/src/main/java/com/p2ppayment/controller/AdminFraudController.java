@@ -1,9 +1,10 @@
-package com.p2ppayment.controller;
+﻿package com.p2ppayment.controller;
 
 import com.p2ppayment.dto.AdminFraudActionRequest;
 import com.p2ppayment.dto.FraudAlertResponse;
 import com.p2ppayment.entity.FraudAlert;
 import com.p2ppayment.entity.User;
+import com.p2ppayment.repository.FraudAlertRepository;
 import com.p2ppayment.repository.UserRepository;
 import com.p2ppayment.service.AuditService;
 import com.p2ppayment.service.FraudService;
@@ -15,30 +16,43 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 @RestController
 @RequestMapping("/api/admin/fraud")
 public class AdminFraudController {
 
     private final FraudService fraudService;
+    private final FraudAlertRepository fraudAlertRepository;
     private final AuditService auditService;
     private final UserRepository userRepository;
 
     public AdminFraudController(FraudService fraudService,
-                              AuditService auditService,
-                              UserRepository userRepository) {
+                                FraudAlertRepository fraudAlertRepository,
+                                AuditService auditService,
+                                UserRepository userRepository) {
         this.fraudService = fraudService;
+        this.fraudAlertRepository = fraudAlertRepository;
         this.auditService = auditService;
         this.userRepository = userRepository;
     }
 
     /**
+     * Get all fraud alerts ordered by most recent first.
+     */
+    @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<FraudAlertResponse>> getAllAlerts() {
+        List<FraudAlert> alerts = fraudAlertRepository.findAllByOrderByCreatedAtDesc();
+        List<FraudAlertResponse> response = alerts.stream()
+                .map(this::toFraudAlertResponse)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * Block a HIGH_VALUE fraud alert and refund the transaction sender.
-     * Admin-only endpoint.
-     *
-     * @param alertId fraud alert ID
-     * @param request action request with notes
-     * @param httpRequest HTTP request for logging IP
-     * @return updated fraud alert
      */
     @PutMapping("/{alertId}/block")
     @PreAuthorize("hasRole('ADMIN')")
@@ -47,30 +61,20 @@ public class AdminFraudController {
             @Valid @RequestBody AdminFraudActionRequest request,
             HttpServletRequest httpRequest) {
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        Long adminId = Long.parseLong(authentication.getName());
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        Long adminId = Long.parseLong(auth.getName());
         User admin = userRepository.findById(adminId).orElse(null);
 
-        // Block the alert and refund sender
         FraudAlert alert = fraudService.blockAlert(alertId, request.notes());
 
-        // Log admin action
-        String ipAddress = getClientIpAddress(httpRequest);
         auditService.logAction("FRAUD_ALERT_BLOCKED", "FRAUD_ALERT", alertId, admin,
-                "Alert blocked with notes: " + request.notes(), ipAddress);
+                "Alert blocked with notes: " + request.notes(), getClientIp(httpRequest));
 
-        FraudAlertResponse response = toFraudAlertResponse(alert);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(toFraudAlertResponse(alert));
     }
 
     /**
-     * Dismiss a HIGH_VALUE fraud alert without action on the transaction.
-     * Admin-only endpoint.
-     *
-     * @param alertId fraud alert ID
-     * @param request action request with notes
-     * @param httpRequest HTTP request for logging IP
-     * @return updated fraud alert
+     * Dismiss a HIGH_VALUE fraud alert without acting on the transaction.
      */
     @PutMapping("/{alertId}/dismiss")
     @PreAuthorize("hasRole('ADMIN')")
@@ -79,47 +83,36 @@ public class AdminFraudController {
             @Valid @RequestBody AdminFraudActionRequest request,
             HttpServletRequest httpRequest) {
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        Long adminId = Long.parseLong(authentication.getName());
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        Long adminId = Long.parseLong(auth.getName());
         User admin = userRepository.findById(adminId).orElse(null);
 
-        // Dismiss the alert (no transaction change)
         FraudAlert alert = fraudService.dismissAlert(alertId, request.notes());
 
-        // Log admin action
-        String ipAddress = getClientIpAddress(httpRequest);
         auditService.logAction("FRAUD_ALERT_DISMISSED", "FRAUD_ALERT", alertId, admin,
-                "Alert dismissed with notes: " + request.notes(), ipAddress);
+                "Alert dismissed with notes: " + request.notes(), getClientIp(httpRequest));
 
-        FraudAlertResponse response = toFraudAlertResponse(alert);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(toFraudAlertResponse(alert));
     }
 
-    /**
-     * Convert FraudAlert entity to response DTO.
-     */
     private FraudAlertResponse toFraudAlertResponse(FraudAlert alert) {
+        String transactionStatus = alert.getTransaction() != null
+                ? alert.getTransaction().getStatus().toString() : null;
         return new FraudAlertResponse(
                 alert.getId(),
-                alert.getTransaction().getId(),
+                alert.getTransaction() != null ? alert.getTransaction().getId() : null,
                 alert.getAlertType().toString(),
                 alert.getStatus().toString(),
                 alert.getNotes(),
-                alert.getCreatedAt().toString()
+                alert.getCreatedAt().toString(),
+                transactionStatus
         );
     }
 
-    /**
-     * Get client IP address from HTTP request.
-     */
-    private String getClientIpAddress(HttpServletRequest request) {
+    private String getClientIp(HttpServletRequest request) {
         String xForwardedFor = request.getHeader("X-Forwarded-For");
         if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
             return xForwardedFor.split(",")[0].trim();
-        }
-        String xRealIp = request.getHeader("X-Real-IP");
-        if (xRealIp != null && !xRealIp.isEmpty()) {
-            return xRealIp;
         }
         return request.getRemoteAddr();
     }

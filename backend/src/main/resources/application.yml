@@ -49,7 +49,7 @@ app:
 
   login-attempt:
     max-failures: ${LOGIN_ATTEMPT_MAX_FAILURES:5}
-    lockout-minutes: ${LOGIN_ATTEMPT_LOCKOUT_MINUTES:30}
+    lockout-minutes: ${LOGIN_ATTEMPT_LOCKOUT_MINUTES:3}
 
 server:
   port: 8080

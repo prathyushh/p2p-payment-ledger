@@ -20,6 +20,10 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     @Query("SELECT t FROM Transaction t WHERE t.status = 'PENDING' AND t.settlementDueDate <= :today ORDER BY t.settlementDueDate ASC")
     List<Transaction> findDueTransactions(LocalDate today);
 
+    // Combined transaction history (sent + received but excluding PENDING incoming)
+    @Query("SELECT t FROM Transaction t WHERE (t.senderWallet.id = :walletId) OR (t.receiverWallet.id = :walletId AND t.status = 'SUCCESS') ORDER BY t.createdAt DESC")
+    Page<Transaction> findByWallet(Long walletId, Pageable pageable);
+
     // Transaction history queries for sender
     @Query("SELECT t FROM Transaction t WHERE t.senderWallet.id = :walletId ORDER BY t.createdAt DESC")
     Page<Transaction> findBySenderWallet(Long walletId, Pageable pageable);
@@ -46,20 +50,22 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     Page<Transaction> findBySenderWalletTypeStatusAndDateRange(Long walletId, Transaction.Type type, Transaction.Status status, LocalDateTime startDate, LocalDateTime endDate, Pageable pageable);
 
     // Transaction history queries for receiver
-    @Query("SELECT t FROM Transaction t WHERE t.receiverWallet.id = :walletId ORDER BY t.createdAt DESC")
+    // Receivers should ONLY see SETTLED (SUCCESS) incoming money, NOT PENDING
+    @Query("SELECT t FROM Transaction t WHERE t.receiverWallet.id = :walletId AND t.status = 'SUCCESS' ORDER BY t.createdAt DESC")
     Page<Transaction> findByReceiverWallet(Long walletId, Pageable pageable);
 
-    @Query("SELECT t FROM Transaction t WHERE t.receiverWallet.id = :walletId AND t.type = :type ORDER BY t.createdAt DESC")
+    @Query("SELECT t FROM Transaction t WHERE t.receiverWallet.id = :walletId AND t.status = 'SUCCESS' AND t.type = :type ORDER BY t.createdAt DESC")
     Page<Transaction> findByReceiverWalletAndType(Long walletId, Transaction.Type type, Pageable pageable);
 
     @Query("SELECT t FROM Transaction t WHERE t.receiverWallet.id = :walletId AND t.status = :status ORDER BY t.createdAt DESC")
     Page<Transaction> findByReceiverWalletAndStatus(Long walletId, Transaction.Status status, Pageable pageable);
 
-    @Query("SELECT t FROM Transaction t WHERE t.receiverWallet.id = :walletId AND t.createdAt >= :startDate AND t.createdAt < :endDate ORDER BY t.createdAt DESC")
+    @Query("SELECT t FROM Transaction t WHERE t.receiverWallet.id = :walletId AND t.status = 'SUCCESS' AND t.createdAt >= :startDate AND t.createdAt < :endDate ORDER BY t.createdAt DESC")
     Page<Transaction> findByReceiverWalletAndDateRange(Long walletId, LocalDateTime startDate, LocalDateTime endDate, Pageable pageable);
 
-    // Mini-statement: last 10 transactions (sent + received combined)
-    @Query("SELECT t FROM Transaction t WHERE (t.senderWallet.id = :walletId OR t.receiverWallet.id = :walletId) ORDER BY t.createdAt DESC")
+    // Mini-statement: last 10 transactions (sent OR received-and-settled combined)
+    // Receivers should NOT see PENDING incoming money
+    @Query("SELECT t FROM Transaction t WHERE (t.senderWallet.id = :walletId) OR (t.receiverWallet.id = :walletId AND t.status = 'SUCCESS') ORDER BY t.createdAt DESC")
     List<Transaction> findMiniStatement(Long walletId, Pageable pageable);
 
     // Duplicate detection query: same sender, receiver, amount within 2-minute window
@@ -70,25 +76,29 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     @Query("SELECT COUNT(t) FROM Transaction t WHERE t.senderWallet.id = :walletId AND t.type = 'P2P_TRANSFER' AND t.status IN ('SUCCESS', 'PENDING')")
     Long countSentTransactions(Long walletId);
 
-    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.receiverWallet.id = :walletId AND t.type = 'P2P_TRANSFER' AND t.status IN ('SUCCESS', 'PENDING')")
+    // Receivers should ONLY count SETTLED (SUCCESS) transactions, NOT PENDING
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.receiverWallet.id = :walletId AND t.type = 'P2P_TRANSFER' AND t.status = 'SUCCESS'")
     Long countReceivedTransactions(Long walletId);
 
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.senderWallet.id = :walletId AND t.type = 'P2P_TRANSFER' AND t.status IN ('SUCCESS', 'PENDING')")
     BigDecimal sumSentAmount(Long walletId);
 
-    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.receiverWallet.id = :walletId AND t.type = 'P2P_TRANSFER' AND t.status IN ('SUCCESS', 'PENDING')")
+    // Receivers should ONLY sum SETTLED (SUCCESS) amounts, NOT PENDING
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.receiverWallet.id = :walletId AND t.type = 'P2P_TRANSFER' AND t.status = 'SUCCESS'")
     BigDecimal sumReceivedAmount(Long walletId);
 
     @Query("SELECT COUNT(t) FROM Transaction t WHERE t.senderWallet.id = :walletId AND t.type = 'P2P_TRANSFER' AND t.status IN ('SUCCESS', 'PENDING') AND YEAR(t.createdAt) = YEAR(CURRENT_DATE) AND MONTH(t.createdAt) = MONTH(CURRENT_DATE)")
     Long countSentThisMonth(Long walletId);
 
-    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.receiverWallet.id = :walletId AND t.type = 'P2P_TRANSFER' AND t.status IN ('SUCCESS', 'PENDING') AND YEAR(t.createdAt) = YEAR(CURRENT_DATE) AND MONTH(t.createdAt) = MONTH(CURRENT_DATE)")
+    // Receivers should ONLY count SETTLED (SUCCESS) transactions, NOT PENDING
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.receiverWallet.id = :walletId AND t.type = 'P2P_TRANSFER' AND t.status = 'SUCCESS' AND YEAR(t.createdAt) = YEAR(CURRENT_DATE) AND MONTH(t.createdAt) = MONTH(CURRENT_DATE)")
     Long countReceivedThisMonth(Long walletId);
 
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.senderWallet.id = :walletId AND t.type = 'P2P_TRANSFER' AND t.status IN ('SUCCESS', 'PENDING') AND YEAR(t.createdAt) = YEAR(CURRENT_DATE) AND MONTH(t.createdAt) = MONTH(CURRENT_DATE)")
     BigDecimal sumSentThisMonth(Long walletId);
 
-    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.receiverWallet.id = :walletId AND t.type = 'P2P_TRANSFER' AND t.status IN ('SUCCESS', 'PENDING') AND YEAR(t.createdAt) = YEAR(CURRENT_DATE) AND MONTH(t.createdAt) = MONTH(CURRENT_DATE)")
+    // Receivers should ONLY sum SETTLED (SUCCESS) amounts, NOT PENDING
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.receiverWallet.id = :walletId AND t.type = 'P2P_TRANSFER' AND t.status = 'SUCCESS' AND YEAR(t.createdAt) = YEAR(CURRENT_DATE) AND MONTH(t.createdAt) = MONTH(CURRENT_DATE)")
     BigDecimal sumReceivedThisMonth(Long walletId);
 
     // Reconciliation queries

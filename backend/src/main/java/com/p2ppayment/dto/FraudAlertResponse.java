@@ -1,4 +1,4 @@
-package com.p2ppayment.dto;
+﻿package com.p2ppayment.dto;
 
 public record FraudAlertResponse(
     Long id,
@@ -6,6 +6,7 @@ public record FraudAlertResponse(
     String alertType,
     String status,
     String notes,
-    String createdAt
+    String createdAt,
+    String transactionStatus
 ) {
 }

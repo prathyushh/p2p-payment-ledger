@@ -86,16 +86,13 @@ public class AuthService {
         User user = userRepository.findByEmail(normalizedEmail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
 
-        // Check if account is locked
+        // Check if account is locked.
+        // ONLY the AccountAutoUnlockJob unlocks accounts (runs every 5 min).
+        // Login never unlocks inline — user must wait for the job.
         if (Boolean.TRUE.equals(user.getAccountLocked())) {
-            if (user.getLockedUntil() != null && LocalDateTime.now().isAfter(user.getLockedUntil())) {
-                logger.info("[AUTH] Lock expired for {}, unlocking", user.getEmail());
-                loginAttemptService.unlockAccount(user);
-            } else {
-                logger.warn("[AUTH] Account LOCKED for {} until {}", user.getEmail(), user.getLockedUntil());
-                throw new ResponseStatusException(HttpStatus.LOCKED,
-                        "Account is locked until " + user.getLockedUntil());
-            }
+            logger.warn("[AUTH] Account LOCKED for {} until {}", user.getEmail(), user.getLockedUntil());
+            throw new ResponseStatusException(HttpStatus.LOCKED,
+                    "Account is locked until " + user.getLockedUntil());
         }
 
         if (!user.getEnabled()) {
@@ -134,3 +131,4 @@ public class AuthService {
         return new UserResponse(user.getId(), user.getName(), user.getEmail(), user.getPhoneNumber(), user.getRole().name());
     }
 }
+

@@ -1,4 +1,4 @@
-package com.p2ppayment.service;
+﻿package com.p2ppayment.service;
 
 import com.p2ppayment.entity.*;
 import com.p2ppayment.repository.*;
@@ -150,6 +150,54 @@ public class SettlementService {
             );
         } catch (Exception e) {
             // Log but do not fail settlement
+        }
+    }
+
+    /**
+     * Called when settleTransaction() throws. Marks transaction FAILED and refunds sender.
+     * Runs in its own transaction so it commits independently.
+     */
+    @Transactional
+    public void markFailedAndRefund(Transaction transaction) {
+        Transaction txn = transactionRepository.findById(transaction.getId()).orElse(null);
+        if (txn == null || txn.getStatus() != Transaction.Status.PENDING) return;
+
+        Wallet senderWallet = txn.getSenderWallet();
+        BigDecimal amount = txn.getAmount();
+
+        txn.setStatus(Transaction.Status.FAILED);
+        txn.setSettledAt(LocalDateTime.now());
+        transactionRepository.save(txn);
+
+        if (senderWallet != null) {
+            BigDecimal balanceBefore = senderWallet.getBalance();
+            senderWallet.setBalance(senderWallet.getBalance().add(amount));
+            if (senderWallet.getDailySpent().compareTo(amount) >= 0) {
+                senderWallet.setDailySpent(senderWallet.getDailySpent().subtract(amount));
+            }
+            walletRepository.save(senderWallet);
+
+            ledgerEntryRepository.save(LedgerEntry.builder()
+                    .transaction(txn)
+                    .wallet(senderWallet)
+                    .type(LedgerEntry.Type.CREDIT)
+                    .amount(amount)
+                    .balanceBefore(balanceBefore)
+                    .balanceAfter(senderWallet.getBalance())
+                    .createdAt(LocalDateTime.now())
+                    .build());
+
+            try {
+                notificationService.create(
+                    senderWallet.getUser().getId(),
+                    Notification.Type.TRANSFER_FAILED,
+                    "Transfer Failed",
+                    "Your transfer of Rs " + amount + " could not be settled and has been refunded.",
+                    txn
+                );
+            } catch (Exception e) {
+                // ignore notification failure
+            }
         }
     }
 }

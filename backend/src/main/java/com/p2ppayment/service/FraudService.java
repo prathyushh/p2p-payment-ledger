@@ -1,13 +1,16 @@
-package com.p2ppayment.service;
+﻿package com.p2ppayment.service;
 
 import com.p2ppayment.entity.FraudAlert;
 import com.p2ppayment.entity.LedgerEntry;
+import com.p2ppayment.entity.Notification;
 import com.p2ppayment.entity.Transaction;
 import com.p2ppayment.entity.Wallet;
 import com.p2ppayment.repository.FraudAlertRepository;
 import com.p2ppayment.repository.LedgerEntryRepository;
 import com.p2ppayment.repository.TransactionRepository;
 import com.p2ppayment.repository.WalletRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,12 +23,14 @@ import java.util.List;
 @Service
 public class FraudService {
 
+    private static final Logger logger = LoggerFactory.getLogger(FraudService.class);
+
     private final FraudAlertRepository fraudAlertRepository;
     private final TransactionRepository transactionRepository;
     private final WalletRepository walletRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
+    private final NotificationService notificationService;
 
-    // Fraud thresholds
     private static final BigDecimal DAILY_LIMIT = new BigDecimal("50000.00");
     private static final BigDecimal HIGH_VALUE_THRESHOLD = new BigDecimal("8000.00");
     private static final int DUPLICATE_WINDOW_MINUTES = 2;
@@ -33,76 +38,33 @@ public class FraudService {
     public FraudService(FraudAlertRepository fraudAlertRepository,
                         TransactionRepository transactionRepository,
                         WalletRepository walletRepository,
-                        LedgerEntryRepository ledgerEntryRepository) {
+                        LedgerEntryRepository ledgerEntryRepository,
+                        NotificationService notificationService) {
         this.fraudAlertRepository = fraudAlertRepository;
         this.transactionRepository = transactionRepository;
         this.walletRepository = walletRepository;
         this.ledgerEntryRepository = ledgerEntryRepository;
+        this.notificationService = notificationService;
     }
 
-    /**
-     * Check if sender has exceeded daily send limit.
-     * BLOCKS transfer if limit exceeded.
-     *
-     * @param senderId sender user ID
-     * @param currentDailySpent today's already-spent amount
-     * @param newAmount amount about to send
-     * @return true if check passes (amount does not exceed limit); false if blocked
-     */
     @Transactional
     public boolean checkDailyLimit(Long senderId, BigDecimal currentDailySpent, BigDecimal newAmount) {
         BigDecimal totalAfter = currentDailySpent.add(newAmount);
-        if (totalAfter.compareTo(DAILY_LIMIT) > 0) {
-            // Daily limit exceeded - this will be checked and blocked in TransactionService
-            // This method just validates the check
-            return false;
-        }
-        return true;
+        return totalAfter.compareTo(DAILY_LIMIT) <= 0;
     }
 
-    /**
-     * Check for duplicate transactions within 2-minute window.
-     * BLOCKS transfer if duplicate detected (same sender, receiver, amount within 2 minutes).
-     * Now uses actual database query to check for recent duplicates.
-     *
-     * @param senderWalletId sender wallet ID
-     * @param receiverWalletId receiver wallet ID
-     * @param amount transfer amount
-     * @return true if check passes (no duplicate); false if duplicate detected
-     */
     @Transactional(readOnly = true)
     public boolean checkDuplicate(Long senderWalletId, Long receiverWalletId, BigDecimal amount) {
         LocalDateTime twoMinutesAgo = LocalDateTime.now().minusMinutes(DUPLICATE_WINDOW_MINUTES);
-        
-        // Query for recent transactions with same sender, receiver, amount in last 2 minutes
         List<Transaction> recentTransactions = transactionRepository.findRecentDuplicates(
-            senderWalletId, receiverWalletId, amount, twoMinutesAgo
-        );
-        
-        return recentTransactions.isEmpty(); // true = no duplicate, false = duplicate found
+                senderWalletId, receiverWalletId, amount, twoMinutesAgo);
+        return recentTransactions.isEmpty();
     }
 
-    /**
-     * Check for high-value transfers.
-     * ALERTS (does not block) if amount >= ₹8,000.
-     * Caller should create alert record separately.
-     *
-     * @param amount transfer amount
-     * @return true if amount is high-value; false otherwise
-     */
     public boolean isHighValue(BigDecimal amount) {
         return amount.compareTo(HIGH_VALUE_THRESHOLD) >= 0;
     }
 
-    /**
-     * Create a fraud alert record for a transaction.
-     * Used for high-value transfers (alert-only rule).
-     *
-     * @param transaction the transaction to alert on
-     * @param alertType type of alert
-     * @param notes optional notes
-     * @return the created FraudAlert
-     */
     @Transactional
     public FraudAlert createAlert(Transaction transaction, FraudAlert.AlertType alertType, String notes) {
         FraudAlert alert = FraudAlert.builder()
@@ -116,103 +78,125 @@ public class FraudService {
     }
 
     /**
-     * Block a fraud alert and refund the associated transaction.
-     * Marks alert as BLOCKED, transaction as FAILED, and refunds sender.
-     * 
-     * @param alertId fraud alert ID
-     * @param adminNotes admin notes for blocking
-     * @return updated FraudAlert
+     * Block a fraud alert:
+     * 1. Refunds sender wallet
+     * 2. Creates CREDIT ledger entry
+     * 3. Marks transaction FAILED
+     * 4. Marks alert BLOCKED
+     * 5. Sends TRANSFER_FAILED notification to sender
      */
     @Transactional
     public FraudAlert blockAlert(Long alertId, String adminNotes) {
         FraudAlert alert = fraudAlertRepository.findById(alertId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Fraud alert not found"));
 
-        // Check if alert is already processed
         if (alert.getStatus() != FraudAlert.Status.PENDING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Alert is already " + alert.getStatus());
         }
 
         Transaction transaction = alert.getTransaction();
-        
-        // Check if transaction is already settled or declined - cannot refund
-        if (transaction.getStatus() == Transaction.Status.SUCCESS || 
-            transaction.getStatus() == Transaction.Status.DECLINED ||
-            transaction.getStatus() == Transaction.Status.FAILED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, 
+
+        if (transaction.getStatus() != Transaction.Status.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Cannot block: transaction is already " + transaction.getStatus());
         }
 
-        // Refund sender if transaction is PENDING
-        if (transaction.getStatus() == Transaction.Status.PENDING) {
-            refundTransactionSender(transaction);
-        }
+        // 1. Refund sender
+        Wallet senderWallet = refundTransactionSender(transaction);
 
-        // Mark transaction as FAILED
+        // 2. Mark transaction FAILED
         transaction.setStatus(Transaction.Status.FAILED);
         transaction.setSettledAt(LocalDateTime.now());
         transactionRepository.save(transaction);
 
-        // Mark alert as BLOCKED
+        // 3. Mark alert BLOCKED
         alert.setStatus(FraudAlert.Status.BLOCKED);
         alert.setNotes(adminNotes != null ? adminNotes : alert.getNotes());
         alert = fraudAlertRepository.save(alert);
 
-        // TODO: TASK-018 will send notifications to sender/receiver about blocking
+        logger.info("[FRAUD] Alert {} BLOCKED. Transaction {} marked FAILED. Sender refunded Rs{}",
+                alertId, transaction.getId(), transaction.getAmount());
+
+        // 4. Notify sender
+        try {
+            notificationService.create(
+                    senderWallet.getUser().getId(),
+                    Notification.Type.TRANSFER_FAILED,
+                    "Transfer Blocked by Admin",
+                    "Your transfer of Rs " + transaction.getAmount() +
+                    " has been blocked by admin due to a fraud alert. " +
+                    "Rs " + transaction.getAmount() + " has been refunded to your wallet.",
+                    transaction
+            );
+            logger.info("[FRAUD] Refund notification sent to sender: {}", senderWallet.getUser().getEmail());
+        } catch (Exception e) {
+            logger.error("[FRAUD] Failed to send notification to sender", e);
+        }
+
+        // 5. Notify receiver (if applicable)
+        try {
+            Wallet receiverWallet = transaction.getReceiverWallet();
+            if (receiverWallet != null) {
+                notificationService.create(
+                        receiverWallet.getUser().getId(),
+                        Notification.Type.TRANSFER_FAILED,
+                        "Incoming Transfer Blocked",
+                        "An incoming transfer of Rs " + transaction.getAmount() +
+                        " to your account has been blocked by admin due to a fraud alert.",
+                        transaction
+                );
+                logger.info("[FRAUD] Block notification sent to receiver: {}", receiverWallet.getUser().getEmail());
+            }
+        } catch (Exception e) {
+            logger.error("[FRAUD] Failed to send notification to receiver", e);
+        }
 
         return alert;
     }
 
     /**
-     * Dismiss a fraud alert without action on the transaction.
-     * Marks alert as DISMISSED; transaction remains unchanged.
-     *
-     * @param alertId fraud alert ID
-     * @param adminNotes admin notes for dismissal
-     * @return updated FraudAlert
+     * Dismiss a fraud alert — transaction stays PENDING, no refund.
      */
     @Transactional
     public FraudAlert dismissAlert(Long alertId, String adminNotes) {
         FraudAlert alert = fraudAlertRepository.findById(alertId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Fraud alert not found"));
 
-        // Check if alert is already processed
         if (alert.getStatus() != FraudAlert.Status.PENDING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Alert is already " + alert.getStatus());
         }
 
-        // Mark alert as DISMISSED
         alert.setStatus(FraudAlert.Status.DISMISSED);
         alert.setNotes(adminNotes != null ? adminNotes : alert.getNotes());
         alert = fraudAlertRepository.save(alert);
 
-        // Transaction remains unchanged (stays PENDING)
+        logger.info("[FRAUD] Alert {} DISMISSED. Transaction {} remains PENDING.", alertId, alert.getTransaction().getId());
 
         return alert;
     }
 
     /**
-     * Refund a transaction sender: credit wallet and reduce daily_spent.
-     * Used internally by blockAlert.
-     *
-     * @param transaction the transaction to refund
+     * Refund sender: credit wallet, reduce daily_spent, create CREDIT ledger entry.
      */
-    private void refundTransactionSender(Transaction transaction) {
+    private Wallet refundTransactionSender(Transaction transaction) {
         Wallet senderWallet = transaction.getSenderWallet();
         if (senderWallet == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Sender wallet not found for transaction");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Sender wallet not found");
         }
 
         BigDecimal amount = transaction.getAmount();
-
-        // Credit sender wallet and reduce daily_spent
         BigDecimal balanceBefore = senderWallet.getBalance();
+
         senderWallet.setBalance(senderWallet.getBalance().add(amount));
-        senderWallet.setDailySpent(senderWallet.getDailySpent().subtract(amount));
+        // Only subtract daily_spent if it won't go negative
+        if (senderWallet.getDailySpent().compareTo(amount) >= 0) {
+            senderWallet.setDailySpent(senderWallet.getDailySpent().subtract(amount));
+        } else {
+            senderWallet.setDailySpent(BigDecimal.ZERO);
+        }
         senderWallet = walletRepository.save(senderWallet);
 
-        // Create CREDIT ledger entry for refund
-        LedgerEntry refundEntry = LedgerEntry.builder()
+        ledgerEntryRepository.save(LedgerEntry.builder()
                 .transaction(transaction)
                 .wallet(senderWallet)
                 .type(LedgerEntry.Type.CREDIT)
@@ -220,7 +204,11 @@ public class FraudService {
                 .balanceBefore(balanceBefore)
                 .balanceAfter(senderWallet.getBalance())
                 .createdAt(LocalDateTime.now())
-                .build();
-        ledgerEntryRepository.save(refundEntry);
+                .build());
+
+        logger.info("[FRAUD] Refunded Rs{} to sender wallet {}. Balance: {} -> {}",
+                amount, senderWallet.getId(), balanceBefore, senderWallet.getBalance());
+
+        return senderWallet;
     }
 }

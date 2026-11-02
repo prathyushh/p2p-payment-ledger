@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -30,6 +31,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query("SELECT u FROM User u WHERE u.role = 'USER' AND (u.email LIKE %:search% OR u.name LIKE %:search% OR u.phoneNumber LIKE %:search%) ORDER BY u.createdAt DESC")
     Page<User> searchUsers(String search, Pageable pageable);
+
+    // Search for recipient by email or phone (for send money autocomplete)
+    @Query("SELECT u FROM User u WHERE u.role = 'USER' AND u.enabled = true AND (LOWER(u.email) LIKE LOWER(CONCAT('%', :query, '%')) OR u.phoneNumber LIKE CONCAT('%', :query, '%') OR LOWER(u.name) LIKE LOWER(CONCAT('%', :query, '%')))")
+    List<User> searchRecipients(@Param("query") String query);
 
     @Transactional
     @Modifying(flushAutomatically = true, clearAutomatically = true)
@@ -53,4 +58,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query(value = "SELECT failed_login_attempts FROM users WHERE id = :id", nativeQuery = true)
     int getFailedLoginAttempts(@Param("id") Long id);
+
+    @Query("SELECT COUNT(u) FROM User u WHERE u.role = 'USER' AND DATE(u.createdAt) = :date")
+    Long countNewRegistrationsForDate(LocalDate date);
 }
+
+

@@ -1,4 +1,4 @@
-package com.p2ppayment.service;
+﻿package com.p2ppayment.service;
 
 import com.p2ppayment.entity.*;
 import com.p2ppayment.repository.*;
@@ -25,8 +25,9 @@ public class TransactionService {
     private final PasswordEncoder passwordEncoder;
     private final AutoReloadService autoReloadService;
     private final FraudService fraudService;
+    private final NotificationService notificationService;
 
-    // Daily send limit in rupees (Ã¢â€šÂ¹50,000)
+    // Daily send limit: Rs 50,000
     private static final BigDecimal DAILY_SEND_LIMIT = new BigDecimal("50000.00");
 
     public TransactionService(TransactionRepository transactionRepository,
@@ -35,7 +36,8 @@ public class TransactionService {
                              LedgerEntryRepository ledgerEntryRepository,
                              PasswordEncoder passwordEncoder,
                              AutoReloadService autoReloadService,
-                             FraudService fraudService) {
+                             FraudService fraudService,
+                             NotificationService notificationService) {
         this.transactionRepository = transactionRepository;
         this.walletRepository = walletRepository;
         this.userRepository = userRepository;
@@ -43,6 +45,7 @@ public class TransactionService {
         this.passwordEncoder = passwordEncoder;
         this.autoReloadService = autoReloadService;
         this.fraudService = fraudService;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -110,7 +113,7 @@ public class TransactionService {
         BigDecimal totalAfterTransfer = todaySent.add(amount);
         if (totalAfterTransfer.compareTo(DAILY_SEND_LIMIT) > 0) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, 
-                    "Daily send limit (Ã¢â€šÂ¹50,000) exceeded. Already sent: Ã¢â€šÂ¹" + todaySent);
+                    "Daily send limit (Rs 50,000) exceeded. Already sent: Rs " + todaySent);
         }
 
         // Check 2: Duplicate transaction (BLOCKING)
@@ -121,7 +124,6 @@ public class TransactionService {
                     "Duplicate transfer detected. Please wait before retrying.");
         }
 
-        // Check 3: High-value transfer (ALERT ONLY, does not block)
         boolean isHighValue = fraudService.isHighValue(amount);
 
         // ============================================
@@ -135,7 +137,7 @@ public class TransactionService {
         LocalDate settlementDueDate = BusinessDayCalculator.addBusinessDays(LocalDate.now(), 3);
 
         // Create Transaction record (PENDING status)
-        Transaction transaction = Transaction.builder()
+        final Transaction transaction = transactionRepository.save(Transaction.builder()
                 .requestId(requestId)
                 .type(Transaction.Type.P2P_TRANSFER)
                 .senderWallet(senderWallet)
@@ -147,14 +149,28 @@ public class TransactionService {
                 .initiatedAt(LocalDateTime.now())
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
-                .build();
-        transaction = transactionRepository.save(transaction);
+                .build());
 
         // Create high-value fraud alert if applicable (ALERT ONLY)
         if (isHighValue) {
-            fraudService.createAlert(transaction, FraudAlert.AlertType.HIGH_VALUE, 
-                    "High-value transfer of Ã¢â€šÂ¹" + amount + " to " + recipient.getEmail());
-            // TODO: TASK-018 will send notification to admin about high-value alert
+            fraudService.createAlert(transaction, FraudAlert.AlertType.HIGH_VALUE,
+                    "High-value transfer of Rs " + amount + " to " + recipient.getEmail());
+            // Notify all admins about high-value transfer
+            try {
+                userRepository.findAllAdminUsers().forEach(admin -> {
+                    try {
+                        notificationService.create(
+                            admin.getId(),
+                            Notification.Type.FRAUD_ALERT_HIGH_VALUE,
+                            "High-Value Transfer Alert",
+                            "User " + sender.getEmail() + " initiated a high-value transfer of Rs " +
+                            amount + " to " + recipient.getEmail() + ". Transaction ID: " + transaction.getId() +
+                            ". Please review in the Fraud panel.",
+                            transaction
+                        );
+                    } catch (Exception ex) { /* ignore notification failure */ }
+                });
+            } catch (Exception ex) { /* ignore notification failure */ }
         }
 
         // ============================================
@@ -165,22 +181,22 @@ public class TransactionService {
         BigDecimal senderBalanceBefore = senderWallet.getBalance();
         senderWallet.setBalance(senderWallet.getBalance().subtract(amount));
         senderWallet.setDailySpent(senderWallet.getDailySpent().add(amount));
-        senderWallet = walletRepository.save(senderWallet);
+        Wallet updatedSenderWallet = walletRepository.save(senderWallet);
 
         // Create DEBIT ledger entry for sender
         LedgerEntry debitEntry = LedgerEntry.builder()
                 .transaction(transaction)
-                .wallet(senderWallet)
+                .wallet(updatedSenderWallet)
                 .type(LedgerEntry.Type.DEBIT)
                 .amount(amount)
                 .balanceBefore(senderBalanceBefore)
-                .balanceAfter(senderWallet.getBalance())
+                .balanceAfter(updatedSenderWallet.getBalance())
                 .createdAt(LocalDateTime.now())
                 .build();
         ledgerEntryRepository.save(debitEntry);
 
         // Trigger Auto Reload for sender (balance decreased)
-        autoReloadService.attemptReload(senderWallet.getId(), false);
+        autoReloadService.attemptReload(updatedSenderWallet.getId(), false);
 
         return transaction;
     }
@@ -202,9 +218,9 @@ public class TransactionService {
         Wallet wallet = walletRepository.findByUser(user)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Wallet not found"));
 
-        // For user history, return transactions where user is sender (owner's primary view)
+        // Return all transactions (both sent and received)
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
-        return transactionRepository.findBySenderWallet(wallet.getId(), pageable);
+        return transactionRepository.findByWallet(wallet.getId(), pageable);
     }
 
     /**
@@ -331,3 +347,4 @@ public class TransactionService {
         }
     }
 }
+

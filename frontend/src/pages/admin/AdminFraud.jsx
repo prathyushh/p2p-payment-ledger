@@ -1,15 +1,15 @@
-﻿import React, { useState, useEffect } from 'react';
-import { getAdminTransactions, blockAlert, dismissAlert } from '../../api/adminApi';
-import './AdminFraud.css';
+﻿import React, { useState, useEffect } from "react";
+import { getFraudAlerts, blockAlert, dismissAlert } from "../../api/adminApi";
+import "./AdminFraud.css";
 
 export default function AdminFraud() {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [showNotes, setShowNotes] = useState(null);
-  const [notes, setNotes] = useState('');
-  const [actionType, setActionType] = useState(null);
-  const [actioningId, setActioningId] = useState(null);
+  const [actionSuccess, setActionSuccess] = useState(null);
+  const [modal, setModal] = useState(null); // { alertId, type }
+  const [notes, setNotes] = useState("");
+  const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
     loadAlerts();
@@ -18,155 +18,177 @@ export default function AdminFraud() {
   const loadAlerts = async () => {
     try {
       setLoading(true);
-      const params = { status: 'PENDING', page: 0, size: 100 };
-      const response = await getAdminTransactions(params);
-      const fraudTransactions = response.data.content;
-      setAlerts(fraudTransactions.map((txn, idx) => ({
-        id: txn.id + idx,
-        transactionId: txn.id,
-        alertType: txn.type === 'SEND_MONEY' ? 'HIGH_VALUE' : 'DUPLICATE',
-        status: 'PENDING',
-        notes: '',
-        createdAt: txn.initiatedAt
-      })));
       setError(null);
+      const response = await getFraudAlerts();
+      setAlerts(response.data);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load fraud alerts');
+      setError(err.response?.data?.message || "Failed to load fraud alerts");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleActionClick = (alertId, type) => {
-    setShowNotes(alertId);
-    setActionType(type);
-    setNotes('');
+  const openModal = (alertId, type) => {
+    setModal({ alertId, type });
+    setNotes("");
+    setActionSuccess(null);
+    setError(null);
   };
 
-  const handleConfirmAction = async () => {
-    if (!showNotes) return;
+  const closeModal = () => {
+    setModal(null);
+    setNotes("");
+  };
 
+  const handleConfirm = async () => {
+    if (!modal) return;
+    setProcessing(true);
+    setError(null);
     try {
-      setActioningId(showNotes);
       const request = { notes };
-      
-      if (actionType === 'block') {
-        await blockAlert(showNotes, request);
-      } else if (actionType === 'dismiss') {
-        await dismissAlert(showNotes, request);
+      if (modal.type === "block") {
+        await blockAlert(modal.alertId, request);
+        setActionSuccess("Transaction blocked and sender refunded.");
+      } else {
+        await dismissAlert(modal.alertId, request);
+        setActionSuccess("Alert dismissed successfully.");
       }
-      
+      closeModal();
       await loadAlerts();
-      setShowNotes(null);
-      setNotes('');
-      setActionType(null);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to perform action');
+      setError(err.response?.data?.message || "Failed to perform action");
     } finally {
-      setActioningId(null);
+      setProcessing(false);
     }
   };
 
-  const formatDateTime = (dateTime) => {
-    if (!dateTime) return '-';
-    return new Date(dateTime).toLocaleString();
+  // A settled transaction = transactionStatus is SUCCESS, FAILED, or DECLINED
+  const isSettled = (alert) =>
+    ["SUCCESS", "FAILED", "DECLINED"].includes(alert.transactionStatus);
+
+  const formatDateTime = (dt) => {
+    if (!dt) return "-";
+    return new Date(dt).toLocaleString();
+  };
+
+  const alertTypeBadge = (type) => {
+    const labels = {
+      HIGH_VALUE: { label: "High Value", cls: "badge-high-value" },
+      DUPLICATE_TRANSACTION: { label: "Duplicate", cls: "badge-duplicate" },
+      DAILY_LIMIT_EXCEEDED: { label: "Daily Limit", cls: "badge-limit" },
+    };
+    const t = labels[type] || { label: type, cls: "" };
+    return <span className={`alert-type ${t.cls}`}>{t.label}</span>;
+  };
+
+  const statusBadge = (status) => {
+    const cls = {
+      PENDING: "status-pending",
+      BLOCKED: "status-blocked",
+      DISMISSED: "status-dismissed",
+    }[status] || "";
+    return <span className={`status-badge ${cls}`}>{status}</span>;
   };
 
   if (loading) return <div className="fraud-loading">Loading fraud alerts...</div>;
-  if (error) return <div className="fraud-error">{error}</div>;
-
-  if (alerts.length === 0) {
-    return (
-      <div className="admin-fraud">
-        <h1>Fraud Alert Review</h1>
-        <div className="fraud-empty">
-          <p>✓ No pending fraud alerts</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="admin-fraud">
-      <h1>Fraud Alert Review ({alerts.length} pending)</h1>
+      <h1>Fraud Alert Review</h1>
 
-      <div className="table-container">
-        <table className="fraud-table">
-          <thead>
-            <tr>
-              <th>Alert ID</th>
-              <th>Transaction ID</th>
-              <th>Alert Type</th>
-              <th>Status</th>
-              <th>Created</th>
-              <th>Notes</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {alerts.map((alert) => (
-              <tr key={alert.id}>
-                <td>{alert.id}</td>
-                <td>{alert.transactionId}</td>
-                <td>
-                  <span className={"alert-type alert-" + (alert.alertType?.toLowerCase() || "unknown")}>
-                    {alert.alertType}
-                  </span>
-                </td>
-                <td>
-                  <span className="status-badge">{alert.status}</span>
-                </td>
-                <td>{formatDateTime(alert.createdAt)}</td>
-                <td>
-                  <div className="notes-preview">{alert.notes || "No notes"}</div>
-                </td>
-                <td className="action-buttons">
-                  <button
-                    className="btn-block"
-                    onClick={() => handleActionClick(alert.id, "block")}
-                    disabled={actioningId === alert.id}
-                  >
-                    Block
-                  </button>
-                  <button
-                    className="btn-dismiss"
-                    onClick={() => handleActionClick(alert.id, "dismiss")}
-                    disabled={actioningId === alert.id}
-                  >
-                    Dismiss
-                  </button>
-                </td>
+      {error && <div className="fraud-error">{error}</div>}
+      {actionSuccess && <div className="fraud-success">{actionSuccess}</div>}
+
+      {alerts.length === 0 ? (
+        <div className="fraud-empty">
+          <p>✓ No fraud alerts found</p>
+        </div>
+      ) : (
+        <div className="table-container">
+          <table className="fraud-table">
+            <thead>
+              <tr>
+                <th>Alert ID</th>
+                <th>Transaction ID</th>
+                <th>Alert Type</th>
+                <th>Alert Status</th>
+                <th>Transaction Status</th>
+                <th>Notes</th>
+                <th>Created</th>
+                <th>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {alerts.map((alert) => (
+                <tr key={alert.id}>
+                  <td>{alert.id}</td>
+                  <td>{alert.transactionId}</td>
+                  <td>{alertTypeBadge(alert.alertType)}</td>
+                  <td>{statusBadge(alert.status)}</td>
+                  <td>
+                    <span className={`status-badge status-${alert.transactionStatus?.toLowerCase()}`}>
+                      {alert.transactionStatus || "-"}
+                    </span>
+                  </td>
+                  <td>{alert.notes || "-"}</td>
+                  <td>{formatDateTime(alert.createdAt)}</td>
+                  <td className="action-buttons">
+                    {alert.status === "PENDING" && !isSettled(alert) ? (
+                      <>
+                        <button
+                          className="btn-block"
+                          onClick={() => openModal(alert.id, "block")}
+                        >
+                          Block
+                        </button>
+                        <button
+                          className="btn-dismiss"
+                          onClick={() => openModal(alert.id, "dismiss")}
+                        >
+                          Dismiss
+                        </button>
+                      </>
+                    ) : (
+                      <span className="read-only-label">
+                        {isSettled(alert) ? "Settled - Read Only" : alert.status}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-      {showNotes !== null && (
-        <div className="modal-overlay" onClick={() => setShowNotes(null)}>
+      {/* Confirmation Modal */}
+      {modal && (
+        <div className="modal-overlay" onClick={closeModal}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Add Notes</h2>
-            <p>Alert ID: {showNotes}</p>
-            <p>Action: <strong>{actionType === "block" ? "Block Alert" : "Dismiss Alert"}</strong></p>
+            <h2>{modal.type === "block" ? "Block Transaction" : "Dismiss Alert"}</h2>
+            <p>Alert ID: <strong>{modal.alertId}</strong></p>
+            {modal.type === "block" && (
+              <p className="modal-warning">
+                ⚠️ This will mark the transaction as FAILED and refund the sender.
+              </p>
+            )}
+            <label>Notes (optional)</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add comments or reasoning..."
+              placeholder="Add reasoning or comments..."
               rows={4}
-            ></textarea>
+            />
             <div className="modal-buttons">
-              <button
-                className="btn-cancel"
-                onClick={() => setShowNotes(null)}
-              >
+              <button className="btn-cancel" onClick={closeModal} disabled={processing}>
                 Cancel
               </button>
               <button
-                className={actionType === "block" ? "btn-block" : "btn-dismiss"}
-                onClick={handleConfirmAction}
-                disabled={actioningId === showNotes}
+                className={modal.type === "block" ? "btn-block" : "btn-dismiss"}
+                onClick={handleConfirm}
+                disabled={processing}
               >
-                {actioningId === showNotes ? "Processing..." : "Confirm"}
+                {processing ? "Processing..." : modal.type === "block" ? "Confirm Block" : "Confirm Dismiss"}
               </button>
             </div>
           </div>

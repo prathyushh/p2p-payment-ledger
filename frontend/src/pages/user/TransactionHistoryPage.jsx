@@ -9,6 +9,7 @@ export default function TransactionHistoryPage() {
 
   // List view state
   const [transactions, setTransactions] = useState([]);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -20,33 +21,45 @@ export default function TransactionHistoryPage() {
 
   // Filter state
   const [statusFilter, setStatusFilter] = useState('ALL');
-  const [typeFilter, setTypeFilter] = useState('ALL');
+  const [directionFilter, setDirectionFilter] = useState('ALL'); // ALL, SENT, RECEIVED
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   // Detail view state
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
 
-  // Fetch transaction history
+  // Fetch transaction history and stats
   const fetchTransactions = useCallback(async (page = 0) => {
     setLoading(true);
     setError('');
     try {
-      const response = await transactionApi.getTransactions({
-        page,
-        size: pageSize,
-      });
+      // Fetch transactions
+      const transResponse = await transactionApi.getTransactions({ page, size: pageSize });
 
-      if (response.data && response.data.content) {
-        setTransactions(response.data.content);
-        setTotalPages(response.data.totalPages);
-        setTotalElements(response.data.totalElements);
+      if (transResponse.data && transResponse.data.content) {
+        setTransactions(transResponse.data.content);
+        setTotalPages(transResponse.data.totalPages);
+        setTotalElements(transResponse.data.totalElements);
         setCurrentPage(page);
       } else {
         setTransactions([]);
       }
+
+      // Try to fetch stats, but don't fail if it errors
+      try {
+        const statsResponse = await transactionApi.getStats();
+        if (statsResponse.data) {
+          setStats(statsResponse.data);
+        }
+      } catch (statsErr) {
+        console.error('Failed to load stats:', statsErr);
+        // Continue even if stats fail
+      }
     } catch (err) {
-      setError('Failed to load transactions. Please try again.');
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to load transactions. Please try again.';
+      setError(errorMsg);
       console.error('Fetch transactions error:', err);
     } finally {
       setLoading(false);
@@ -71,10 +84,31 @@ export default function TransactionHistoryPage() {
   // Apply filters (client-side filtering on current page)
   const getFilteredTransactions = () => {
     return transactions.filter((tx) => {
+      // Status filter
       const statusMatch = statusFilter === 'ALL' || tx.status === statusFilter;
-      const typeMatch = typeFilter === 'ALL' || tx.type === typeFilter;
-      return statusMatch && typeMatch;
+      
+      // Direction filter (SENT/RECEIVED)
+      const directionMatch = directionFilter === 'ALL' || 
+        (directionFilter === 'SENT' && tx.senderEmail === user?.email) ||
+        (directionFilter === 'RECEIVED' && tx.receiverEmail === user?.email);
+      
+      // Date range filter
+      const txDate = new Date(tx.initiatedAt);
+      const dateMatch = (!dateFrom || txDate >= new Date(dateFrom)) && 
+                       (!dateTo || txDate <= new Date(dateTo + 'T23:59:59'));
+      
+      return statusMatch && directionMatch && dateMatch;
     });
+  };
+
+  // Calculate days remaining for pending transactions
+  const getDaysRemaining = (settlementDueDate) => {
+    if (!settlementDueDate) return null;
+    const today = new Date();
+    const dueDate = new Date(settlementDueDate);
+    const diffTime = dueDate - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
   };
 
   // Initial load
@@ -252,9 +286,51 @@ export default function TransactionHistoryPage() {
 
       {error && <div className="error-banner">{error}</div>}
 
+      {/* Transaction Stats */}
+      {stats && (
+        <div className="stats-card">
+          <h2>Your Transaction Statistics</h2>
+          <div className="stats-grid">
+            <div className="stat-item">
+              <span className="stat-label">Total Sent</span>
+              <span className="stat-value">{stats.totalSent} transactions</span>
+              <span className="stat-amount">₹{parseFloat(stats.totalSentAmount).toFixed(2)}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Total Received</span>
+              <span className="stat-value">{stats.totalReceived} transactions</span>
+              <span className="stat-amount">₹{parseFloat(stats.totalReceivedAmount).toFixed(2)}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">This Month Sent</span>
+              <span className="stat-value">{stats.thisMonthSent} transactions</span>
+              <span className="stat-amount">₹{parseFloat(stats.thisMonthSentAmount).toFixed(2)}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">This Month Received</span>
+              <span className="stat-value">{stats.thisMonthReceived} transactions</span>
+              <span className="stat-amount">₹{parseFloat(stats.thisMonthReceivedAmount).toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="filters-card">
         <div className="filters-group">
+          <div className="filter-item">
+            <label htmlFor="direction-filter">Direction</label>
+            <select
+              id="direction-filter"
+              value={directionFilter}
+              onChange={(e) => setDirectionFilter(e.target.value)}
+            >
+              <option value="ALL">All Transactions</option>
+              <option value="SENT">Sent Only</option>
+              <option value="RECEIVED">Received Only</option>
+            </select>
+          </div>
+
           <div className="filter-item">
             <label htmlFor="status-filter">Status</label>
             <select
@@ -264,30 +340,38 @@ export default function TransactionHistoryPage() {
             >
               <option value="ALL">All Statuses</option>
               <option value="PENDING">Pending</option>
-              <option value="SETTLED">Settled</option>
+              <option value="SUCCESS">Success</option>
               <option value="FAILED">Failed</option>
-              <option value="BLOCKED">Blocked</option>
             </select>
           </div>
 
           <div className="filter-item">
-            <label htmlFor="type-filter">Type</label>
-            <select
-              id="type-filter"
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-            >
-              <option value="ALL">All Types</option>
-              <option value="P2P_TRANSFER">P2P Transfer</option>
-              <option value="TOPUP">Top Up</option>
-            </select>
+            <label htmlFor="date-from">Date From</label>
+            <input
+              type="date"
+              id="date-from"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+          </div>
+
+          <div className="filter-item">
+            <label htmlFor="date-to">Date To</label>
+            <input
+              type="date"
+              id="date-to"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
           </div>
 
           <button
             className="btn btn-secondary"
             onClick={() => {
               setStatusFilter('ALL');
-              setTypeFilter('ALL');
+              setDirectionFilter('ALL');
+              setDateFrom('');
+              setDateTo('');
             }}
           >
             Clear Filters
@@ -308,16 +392,18 @@ export default function TransactionHistoryPage() {
           <div className="empty-icon">📭</div>
           <h3>No Transactions Found</h3>
           <p>
-            {statusFilter !== 'ALL' || typeFilter !== 'ALL'
+            {statusFilter !== 'ALL' || directionFilter !== 'ALL' || dateFrom || dateTo
               ? 'Try adjusting your filters'
               : 'You have no transactions yet'}
           </p>
-          {(statusFilter !== 'ALL' || typeFilter !== 'ALL') && (
+          {(statusFilter !== 'ALL' || directionFilter !== 'ALL' || dateFrom || dateTo) && (
             <button
               className="btn btn-primary"
               onClick={() => {
                 setStatusFilter('ALL');
-                setTypeFilter('ALL');
+                setDirectionFilter('ALL');
+                setDateFrom('');
+                setDateTo('');
               }}
             >
               Reset Filters
@@ -330,48 +416,66 @@ export default function TransactionHistoryPage() {
       {!loading && filteredTransactions.length > 0 && (
         <>
           <div className="transactions-list">
-            {filteredTransactions.map((tx) => (
-              <div key={tx.id} className="transaction-item">
-                <div className="transaction-icon">
-                  {isSender(tx) ? '💸' : '💰'}
-                </div>
-                <div className="transaction-info">
-                  <div className="transaction-header">
-                    <span className="transaction-type">{getTypeLabel(tx.type)}</span>
-                    <span
-                      className="status-badge"
-                      style={{ backgroundColor: getStatusColor(tx.status) }}
+            {filteredTransactions.map((tx) => {
+              const daysRemaining = tx.status === 'PENDING' ? getDaysRemaining(tx.settlementDueDate) : null;
+              return (
+                <div key={tx.id} className="transaction-item">
+                  <div className="transaction-icon">
+                    {isSender(tx) ? '💸' : '💰'}
+                  </div>
+                  <div className="transaction-info">
+                    <div className="transaction-header">
+                      <span className="transaction-type">{getTypeLabel(tx.type)}</span>
+                      <span
+                        className="status-badge"
+                        style={{ backgroundColor: getStatusColor(tx.status) }}
+                      >
+                        {tx.status}
+                      </span>
+                    </div>
+                    <div className="transaction-details">
+                      <span className="counterparty">
+                        {isSender(tx) ? 'To: ' : 'From: '}
+                        {isSender(tx) ? tx.receiverEmail : tx.senderEmail}
+                      </span>
+                      <span className="remark">{tx.remark}</span>
+                    </div>
+                    <div className="transaction-date">
+                      {new Date(tx.initiatedAt).toLocaleDateString()}
+                    </div>
+                    {tx.status === 'PENDING' && tx.settlementDueDate && (
+                      <div className="settlement-info">
+                        <span className="settlement-label">Settlement Due:</span>
+                        <span className="settlement-date">{tx.settlementDueDate}</span>
+                        {daysRemaining !== null && (
+                          <span className={`days-remaining ${daysRemaining < 0 ? 'overdue' : ''}`}>
+                            {daysRemaining < 0 
+                              ? `${Math.abs(daysRemaining)} days overdue` 
+                              : daysRemaining === 0 
+                                ? 'Due today' 
+                                : `${daysRemaining} days remaining`}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="transaction-amount">
+                    <span className={isSender(tx) ? 'debit' : 'credit'}>
+                      {isSender(tx) ? '-' : '+'}₹{parseFloat(tx.amount).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="transaction-actions">
+                    <button
+                      className="btn-detail"
+                      onClick={() => handleViewDetail(tx.id)}
+                      disabled={detailLoading}
                     >
-                      {tx.status}
-                    </span>
-                  </div>
-                  <div className="transaction-details">
-                    <span className="counterparty">
-                      {isSender(tx) ? 'To: ' : 'From: '}
-                      {isSender(tx) ? tx.receiverEmail : tx.senderEmail}
-                    </span>
-                    <span className="remark">{tx.remark}</span>
-                  </div>
-                  <div className="transaction-date">
-                    {new Date(tx.initiatedAt).toLocaleDateString()}
+                      View
+                    </button>
                   </div>
                 </div>
-                <div className="transaction-amount">
-                  <span className={isSender(tx) ? 'debit' : 'credit'}>
-                    {isSender(tx) ? '-' : '+'}Rs {parseFloat(tx.amount).toFixed(2)}
-                  </span>
-                </div>
-                <div className="transaction-actions">
-                  <button
-                    className="btn-detail"
-                    onClick={() => handleViewDetail(tx.id)}
-                    disabled={detailLoading}
-                  >
-                    View
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Pagination */}

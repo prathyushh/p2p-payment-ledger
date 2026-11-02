@@ -5,6 +5,7 @@ import com.p2ppayment.dto.SettlementQueueResponse;
 import com.p2ppayment.entity.Transaction;
 import com.p2ppayment.entity.User;
 import com.p2ppayment.repository.TransactionRepository;
+import com.p2ppayment.security.JwtAuthenticationToken;
 import com.p2ppayment.service.AuditService;
 import com.p2ppayment.service.SettlementService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -142,7 +143,8 @@ public class AdminSettlementController {
         try {
             // Get current admin user from JWT
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-            String adminEmail = authentication.getName();
+            JwtAuthenticationToken jwtAuth = (JwtAuthenticationToken) authentication;
+            String adminEmail = jwtAuth.getEmail();
             
             // Log the manual settlement trigger action
             String details = "Manual settlement triggered by admin for transaction " + id + 

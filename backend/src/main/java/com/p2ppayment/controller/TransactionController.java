@@ -183,12 +183,23 @@ public class TransactionController {
                 request.pin()
         );
         
+        // Get recipient details from the transaction
+        String recipientName = transaction.getReceiverWallet() != null && transaction.getReceiverWallet().getUser() != null
+                ? transaction.getReceiverWallet().getUser().getName()
+                : "Unknown";
+        
+        String recipientEmail = transaction.getReceiverWallet() != null && transaction.getReceiverWallet().getUser() != null
+                ? transaction.getReceiverWallet().getUser().getEmail()
+                : request.recipientIdentifier();
+        
         SendMoneyResponse response = new SendMoneyResponse(
                 transaction.getId(),
                 transaction.getStatus().toString(),
                 transaction.getAmount(),
                 transaction.getSenderWallet().getBalance(),
                 transaction.getSettlementDueDate(),
+                recipientName,
+                recipientEmail,
                 "Money sent successfully. Settlement expected by " + transaction.getSettlementDueDate()
         );
         

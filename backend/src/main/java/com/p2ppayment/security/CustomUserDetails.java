@@ -1,4 +1,4 @@
-package com.p2ppayment.security;
+﻿package com.p2ppayment.security;
 
 import com.p2ppayment.entity.User;
 import org.springframework.security.core.GrantedAuthority;
@@ -18,7 +18,7 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority(user.getRole().name()));
+        return List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
     }
 
     @Override
@@ -31,11 +31,26 @@ public class CustomUserDetails implements UserDetails {
         return user.getEmail();
     }
 
+    // Return true for all checks below — Spring Security must NOT block login.
+    // All validation (enabled, locked, password) is handled by AuthService.
+    @Override
+    public boolean isAccountNonExpired() { return true; }
+
+    @Override
+    public boolean isAccountNonLocked() { return true; }
+
+    @Override
+    public boolean isCredentialsNonExpired() { return true; }
+
+    @Override
+    public boolean isEnabled() { return true; }
+
+    // Expose raw user fields for use in JWT filter
     public Long getId() { return user.getId(); }
     public String getPhoneNumber() { return user.getPhoneNumber(); }
     public String getName() { return user.getName(); }
     public String getRole() { return user.getRole().name(); }
-    public boolean isEnabled() { return user.getEnabled(); }
-    public boolean isAccountLocked() { return user.getAccountLocked(); }
+    public boolean isUserEnabled() { return user.getEnabled(); }
+    public boolean isUserAccountLocked() { return user.getAccountLocked(); }
     public java.time.LocalDateTime getLockedUntil() { return user.getLockedUntil(); }
 }

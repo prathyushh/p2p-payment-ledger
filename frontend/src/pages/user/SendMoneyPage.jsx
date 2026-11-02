@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as transactionApi from '../../api/transactionApi';
+import * as userApi from '../../api/userApi';
 import './UserPages.css';
 import './SendMoneyPage.css';
 
@@ -16,9 +17,11 @@ export default function SendMoneyPage() {
   });
   
   // Search and submission states
+  const [searchResults, setSearchResults] = useState([]);
   const [selectedRecipient, setSelectedRecipient] = useState(null);
   const [showResults, setShowResults] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [transactionResult, setTransactionResult] = useState(null);
@@ -32,13 +35,15 @@ export default function SendMoneyPage() {
     };
   }, []);
 
-  const handleSearchChange = (e) => {
+  const handleSearchChange = async (e) => {
     const value = e.target.value;
     setFormData(prev => ({ ...prev, recipientIdentifier: value }));
     setSelectedRecipient(null);
     setError('');
+    setShowResults(false);
 
     if (!value || value.trim().length < 2) {
+      setSearchResults([]);
       return;
     }
 
@@ -46,21 +51,27 @@ export default function SendMoneyPage() {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
 
     debounceTimer.current = setTimeout(async () => {
-      setLoading(true);
+      setSearching(true);
       try {
-        // Backend will validate the recipient exists
+        const response = await userApi.searchRecipients(value.trim());
+        setSearchResults(response.data || []);
         setShowResults(true);
-        setLoading(false);
+        setSearching(false);
       } catch (err) {
         console.error('Search error:', err);
-        setLoading(false);
+        setSearchResults([]);
+        setSearching(false);
       }
     }, 300);
   };
 
-  const handleSelectRecipient = () => {
-    setSelectedRecipient(formData.recipientIdentifier);
+  const handleSelectRecipient = (recipient) => {
+    // Use email or phone number as identifier
+    const identifier = recipient.email || recipient.phoneNumber;
+    setFormData(prev => ({ ...prev, recipientIdentifier: identifier }));
+    setSelectedRecipient(recipient);
     setShowResults(false);
+    setSearchResults([]);
   };
 
   const handleInputChange = (e) => {
@@ -108,8 +119,8 @@ export default function SendMoneyPage() {
 
       setSuccess(true);
       setTransactionResult(response.data);
+      // Don't clear selectedRecipient here - we need it for the success screen
       setFormData({ recipientIdentifier: '', amount: '', remark: '', pin: '' });
-      setSelectedRecipient(null);
     } catch (err) {
       const errorMsg = err.response?.data?.message || err.message || 'Failed to send money';
       setError(errorMsg);
@@ -123,43 +134,60 @@ export default function SendMoneyPage() {
     return (
       <div className="user-page send-money-page">
         <div className="page-header">
-          <h1>Send Money</h1>
-          <p>Transfer funds to another user</p>
+          <h1>Transfer Complete</h1>
+          <p>Your payment has been initiated</p>
         </div>
 
         <div className="success-card">
-          <div className="success-icon">?</div>
+          <div className="success-icon">✓</div>
           <h2>Transfer Initiated Successfully</h2>
+          <p className="success-subtitle">Your money will be delivered in 3 business days</p>
           
           <div className="transaction-details">
             <div className="detail-row">
-              <span className="label">Transaction ID:</span>
-              <span className="value">{transactionResult.transactionId}</span>
+              <span className="label">Transaction ID</span>
+              <span className="value">#{transactionResult.transactionId}</span>
+            </div>
+            <div className="detail-row highlight">
+              <span className="label">Amount</span>
+              <span className="value amount">₹{parseFloat(transactionResult.amount).toFixed(2)}</span>
             </div>
             <div className="detail-row">
-              <span className="label">Amount:</span>
-              <span className="value">Rs {parseFloat(transactionResult.amount).toFixed(2)}</span>
+              <span className="label">Recipient</span>
+              <span className="value">{transactionResult.recipientName || selectedRecipient?.name || 'N/A'}</span>
+            </div>
+            <div className="detail-row sub">
+              <span className="label">Contact</span>
+              <span className="value">{transactionResult.recipientEmail || selectedRecipient?.email || 'N/A'}</span>
             </div>
             <div className="detail-row">
-              <span className="label">Recipient:</span>
-              <span className="value">{formData.recipientIdentifier}</span>
+              <span className="label">Status</span>
+              <span className="value">
+                <span className="status-badge pending">{transactionResult.status}</span>
+              </span>
             </div>
             <div className="detail-row">
-              <span className="label">Status:</span>
-              <span className="value status">{transactionResult.status}</span>
+              <span className="label">Settlement Due Date</span>
+              <span className="value">{new Date(transactionResult.settlementDueDate).toLocaleDateString('en-IN', { 
+                day: '2-digit', 
+                month: 'short', 
+                year: 'numeric' 
+              })}</span>
             </div>
             <div className="detail-row">
-              <span className="label">Settlement Due Date:</span>
-              <span className="value">{new Date(transactionResult.settlementDueDate).toLocaleDateString()}</span>
-            </div>
-            <div className="detail-row">
-              <span className="label">New Balance:</span>
-              <span className="value">Rs {parseFloat(transactionResult.senderNewBalance).toFixed(2)}</span>
+              <span className="label">New Balance</span>
+              <span className="value">₹{parseFloat(transactionResult.senderNewBalance).toFixed(2)}</span>
             </div>
           </div>
 
           <div className="info-message">
-            <strong>Note:</strong> This transfer will settle in 3 business days via ACH. You will receive a notification once the settlement is complete.
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10 0C4.48 0 0 4.48 0 10C0 15.52 4.48 20 10 20C15.52 20 20 15.52 20 10C20 4.48 15.52 0 10 0ZM11 15H9V13H11V15ZM11 11H9V5H11V11Z" fill="#2563eb"/>
+            </svg>
+            <div>
+              <strong>Settlement Information</strong>
+              <p>This transfer will settle in 3 business days via ACH. You will receive a notification once the settlement is complete.</p>
+            </div>
           </div>
 
           <div className="success-actions">
@@ -168,6 +196,7 @@ export default function SendMoneyPage() {
               onClick={() => {
                 setSuccess(false);
                 setTransactionResult(null);
+                setSelectedRecipient(null);
               }}
             >
               Send Another Transfer
@@ -203,23 +232,56 @@ export default function SendMoneyPage() {
                 id="recipient"
                 value={formData.recipientIdentifier}
                 onChange={handleSearchChange}
-                placeholder="Enter email or phone number"
+                placeholder="Search by name, email or phone"
                 disabled={loading}
                 autoComplete="off"
               />
-              {loading && <div className="search-loading">Searching...</div>}
+              {searching && <div className="search-loading">Searching...</div>}
             </div>
-            {showResults && !selectedRecipient && formData.recipientIdentifier && (
-              <div className="recipient-suggestion">
-                <div className="suggestion-item" onClick={handleSelectRecipient}>
-                  <span className="recipient-name">{formData.recipientIdentifier}</span>
-                  <button type="button" className="btn-small">Select</button>
-                </div>
+            {showResults && !selectedRecipient && searchResults.length > 0 && (
+              <div className="recipient-suggestions">
+                {searchResults.map((recipient) => (
+                  <div 
+                    key={recipient.id} 
+                    className="suggestion-item" 
+                    onClick={() => handleSelectRecipient(recipient)}
+                  >
+                    <div className="recipient-info">
+                      <span className="recipient-name">{recipient.name}</span>
+                      <span className="recipient-contact">{recipient.email}</span>
+                      {recipient.phoneNumber && (
+                        <span className="recipient-phone">{recipient.phoneNumber}</span>
+                      )}
+                    </div>
+                    <button type="button" className="btn-small">Select</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {showResults && !selectedRecipient && formData.recipientIdentifier.length >= 2 && searchResults.length === 0 && !searching && (
+              <div className="no-results">
+                No users found matching "{formData.recipientIdentifier}"
               </div>
             )}
             {selectedRecipient && (
               <div className="selected-recipient">
-                {String.fromCharCode(10003)} {selectedRecipient}
+                <div className="selected-info">
+                  <span className="checkmark">{String.fromCharCode(10003)}</span>
+                  <div>
+                    <div className="selected-name">{selectedRecipient.name}</div>
+                    <div className="selected-contact">{selectedRecipient.email}</div>
+                  </div>
+                </div>
+                <button 
+                  type="button" 
+                  className="btn-change"
+                  onClick={() => {
+                    setSelectedRecipient(null);
+                    setFormData(prev => ({ ...prev, recipientIdentifier: '' }));
+                  }}
+                >
+                  Change
+                </button>
               </div>
             )}
           </div>
@@ -303,3 +365,4 @@ export default function SendMoneyPage() {
     </div>
   );
 }
+

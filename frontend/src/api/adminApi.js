@@ -20,6 +20,7 @@ export const getPendingSettlements = (params) => axiosClient.get("/admin/settlem
 export const triggerSettlement = (transactionId) => axiosClient.post("/admin/settlement/" + transactionId + "/trigger");
 
 // Fraud
+export const getFraudAlerts = () => axiosClient.get("/admin/fraud");
 export const blockAlert = (alertId, request) => axiosClient.put("/admin/fraud/" + alertId + "/block", request);
 export const dismissAlert = (alertId, request) => axiosClient.put("/admin/fraud/" + alertId + "/dismiss", request);
 

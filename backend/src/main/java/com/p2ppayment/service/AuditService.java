@@ -1,4 +1,4 @@
-package com.p2ppayment.service;
+﻿package com.p2ppayment.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.p2ppayment.entity.AuditLog;
@@ -6,6 +6,8 @@ import com.p2ppayment.entity.User;
 import com.p2ppayment.repository.AuditLogRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Map;
 
 @Service
 public class AuditService {
@@ -18,14 +20,21 @@ public class AuditService {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * Converts details string to valid JSON before saving.
+     * audit_log.details is JSONB — plain strings are invalid.
+     * Wraps as: {"note": "..."}
+     */
     @Transactional
     public void logAction(String action, String entityType, Long entityId, User actor, String details, String ipAddress) {
+        String jsonDetails = toJson(details);
+
         AuditLog auditLog = AuditLog.builder()
                 .action(action)
                 .entityType(entityType)
                 .entityId(entityId)
                 .actor(actor)
-                .details(details)
+                .details(jsonDetails)
                 .ipAddress(ipAddress)
                 .build();
 
@@ -41,14 +50,30 @@ public class AuditService {
     public void logWalletStatusChange(String action, Long walletId, String beforeStatus, String afterStatus, User actor, String ipAddress) {
         try {
             String details = objectMapper.writeValueAsString(
-                    new Object() {
-                        public final String before_status = beforeStatus;
-                        public final String after_status = afterStatus;
-                    }
+                    Map.of("before_status", beforeStatus, "after_status", afterStatus)
             );
             logAction(action, "WALLET", walletId, actor, details, ipAddress);
         } catch (Exception e) {
-            logAction(action, "WALLET", walletId, actor, "Status change: " + beforeStatus + " → " + afterStatus, ipAddress);
+            logAction(action, "WALLET", walletId, actor,
+                    toJson("Status change: " + beforeStatus + " to " + afterStatus), ipAddress);
+        }
+    }
+
+    /**
+     * If the string is already valid JSON (starts with { or [), use it as-is.
+     * Otherwise wrap it as {"note": "..."} so it is valid JSONB.
+     */
+    private String toJson(String details) {
+        if (details == null) return null;
+        String trimmed = details.trim();
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+            return trimmed; // already valid JSON
+        }
+        try {
+            // Wrap plain text as a JSON object
+            return objectMapper.writeValueAsString(Map.of("note", details));
+        } catch (Exception e) {
+            return "{\"note\": \"audit details unavailable\"}";
         }
     }
 }

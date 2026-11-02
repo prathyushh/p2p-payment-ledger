@@ -38,7 +38,10 @@ export default function AdminReconciliation() {
   if (error) return <div className="recon-error">{error}</div>;
   if (!reconciliation) return <div className="recon-error">No reconciliation data available</div>;
 
-  const hasMismatch = reconciliation.reconciliationMismatch && reconciliation.reconciliationMismatch !== 0;
+  const hasMismatch = reconciliation.reconciliationMismatch === true;
+  const debitSum = parseFloat(reconciliation.reconciliationDebitSum || 0);
+  const creditSum = parseFloat(reconciliation.reconciliationCreditSum || 0);
+  const imbalance = Math.abs(debitSum - creditSum).toFixed(2);
 
   return (
     <div className="admin-reconciliation">
@@ -48,7 +51,8 @@ export default function AdminReconciliation() {
       {hasMismatch && (
         <div className="mismatch-alert">
           <h3>⚠️ Reconciliation Mismatch Detected</h3>
-          <p>Debit/Credit imbalance: {formatCurrency(reconciliation.reconciliationMismatch)}</p>
+          <p>Debit/Credit imbalance: ₹{imbalance}</p>
+          <p>DEBIT sum: {formatCurrency(reconciliation.reconciliationDebitSum)} | CREDIT sum: {formatCurrency(reconciliation.reconciliationCreditSum)}</p>
           <p className="alert-text">Please investigate the ledger entries immediately.</p>
         </div>
       )}
@@ -124,3 +128,4 @@ export default function AdminReconciliation() {
     </div>
   );
 }
+

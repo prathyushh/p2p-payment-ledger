@@ -9,6 +9,8 @@ public record SendMoneyResponse(
         BigDecimal amount,
         BigDecimal senderNewBalance,
         LocalDate settlementDueDate,
+        String recipientName,
+        String recipientEmail,
         String message
 ) {
 }

@@ -186,7 +186,7 @@ export default function NotificationsPage() {
                     disabled={marking === notification.id}
                     title="Mark as read"
                   >
-                    {marking === notification.id ? '...' : '?'}
+                    {marking === notification.id ? '⏳' : '✓'}
                   </button>
                 )}
               </div>

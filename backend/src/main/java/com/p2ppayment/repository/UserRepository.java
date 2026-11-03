@@ -33,7 +33,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Page<User> searchUsers(String search, Pageable pageable);
 
     // Search for recipient by email or phone (for send money autocomplete)
-    @Query("SELECT u FROM User u WHERE u.role = 'USER' AND u.enabled = true AND (LOWER(u.email) LIKE LOWER(CONCAT('%', :query, '%')) OR u.phoneNumber LIKE CONCAT('%', :query, '%') OR LOWER(u.name) LIKE LOWER(CONCAT('%', :query, '%')))")
+    @Query("SELECT u FROM User u WHERE u.enabled = true AND (LOWER(u.email) LIKE LOWER(CONCAT('%', :query, '%')) OR u.phoneNumber LIKE CONCAT('%', :query, '%') OR LOWER(u.name) LIKE LOWER(CONCAT('%', :query, '%')))")
     List<User> searchRecipients(@Param("query") String query);
 
     @Transactional

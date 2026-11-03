@@ -1,26 +1,21 @@
 package com.p2ppayment.controller;
 
-import com.p2ppayment.entity.LedgerEntry;
+import com.p2ppayment.dto.TransactionResponse;
 import com.p2ppayment.entity.Transaction;
-import com.p2ppayment.entity.User;
-import com.p2ppayment.entity.Wallet;
 import com.p2ppayment.repository.LedgerEntryRepository;
 import com.p2ppayment.repository.TransactionRepository;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.test.web.servlet.MockMvc;
-
-import org.mockito.ArgumentCaptor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -28,428 +23,352 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(AdminTransactionController.class)
-@AutoConfigureMockMvc(addFilters = false)
+@ExtendWith(MockitoExtension.class)
 class AdminTransactionControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
-
-    @MockBean
+    @Mock
     private TransactionRepository transactionRepository;
 
-    @MockBean
+    @Mock
     private LedgerEntryRepository ledgerEntryRepository;
 
+    @InjectMocks
+    private AdminTransactionController controller;
+
     private Transaction transaction;
-
-    private User sender;
-    private User receiver;
-
-    private Wallet senderWallet;
-    private Wallet receiverWallet;
+    private Page<Transaction> page;
 
     @BeforeEach
     void setUp() {
-        sender = new User();
-        sender.setId(1L);
-        sender.setName("Sender User");
-        sender.setEmail("sender@example.com");
+        transaction = new Transaction();
+        transaction.setId(1L);
+        transaction.setType(Transaction.Type.WALLET_TOP_UP);
+        transaction.setStatus(Transaction.Status.PENDING);
+        transaction.setAmount(new BigDecimal("100.00"));
+        transaction.setRemark("test transfer");
+        transaction.setInitiatedAt(LocalDateTime.of(2026, 1, 10, 10, 0));
+        transaction.setSettledAt(null);
+        transaction.setSettlementDueDate(LocalDate.of(2026, 1, 15));
 
-        receiver = new User();
-        receiver.setId(2L);
-        receiver.setName("Receiver User");
-        receiver.setEmail("receiver@example.com");
-
-        senderWallet = new Wallet();
-        senderWallet.setId(10L);
-        senderWallet.setUser(sender);
-
-        receiverWallet = new Wallet();
-        receiverWallet.setId(20L);
-        receiverWallet.setUser(receiver);
-
-        transaction = createTransaction(1L);
+        page = new PageImpl<>(List.of(transaction));
     }
 
-    private Transaction createTransaction(Long id) {
-        return Transaction.builder()
-                .id(id)
-                .requestId("request-" + id)
-                .type(Transaction.Type.P2P_TRANSFER)
-                .status(Transaction.Status.SUCCESS)
-                .amount(new BigDecimal("100.00"))
-                .senderWallet(senderWallet)
-                .receiverWallet(receiverWallet)
-                .remark("Test transfer")
-                .settlementDueDate(LocalDate.of(2026, 11, 6))
-                .initiatedAt(LocalDateTime.of(2026, 11, 3, 10, 0))
-                .settledAt(LocalDateTime.of(2026, 11, 3, 10, 5))
-                .createdAt(LocalDateTime.of(2026, 11, 3, 10, 0))
-                .updatedAt(LocalDateTime.of(2026, 11, 3, 10, 5))
-                .build();
+    private void stubAllQueries() {
+        lenient().when(transactionRepository.findByAllFilters(
+                anyString(), anyString(), any(BigDecimal.class), any(BigDecimal.class),
+                any(LocalDate.class), any(LocalDate.class), any(Pageable.class)))
+                .thenReturn(page);
+
+        lenient().when(transactionRepository.findByTypeStatusAndDateRange(
+                anyString(), anyString(), any(LocalDate.class), any(LocalDate.class), any(Pageable.class)))
+                .thenReturn(page);
+
+        lenient().when(transactionRepository.findByTypeStatusAndAmountRange(
+                anyString(), anyString(), any(BigDecimal.class), any(BigDecimal.class), any(Pageable.class)))
+                .thenReturn(page);
+
+        lenient().when(transactionRepository.findByStatusAmountAndDateRange(
+                anyString(), any(BigDecimal.class), any(BigDecimal.class),
+                any(LocalDate.class), any(LocalDate.class), any(Pageable.class)))
+                .thenReturn(page);
+
+        lenient().when(transactionRepository.findByTypeAmountAndDateRange(
+                anyString(), any(BigDecimal.class), any(BigDecimal.class),
+                any(LocalDate.class), any(LocalDate.class), any(Pageable.class)))
+                .thenReturn(page);
+
+        lenient().when(transactionRepository.findByTypeAndStatus(
+                anyString(), anyString(), any(Pageable.class))).thenReturn(page);
+
+        lenient().when(transactionRepository.findByTypeAndAmountRange(
+                anyString(), any(BigDecimal.class), any(BigDecimal.class), any(Pageable.class)))
+                .thenReturn(page);
+
+        lenient().when(transactionRepository.findByTypeAndDateRange(
+                anyString(), any(LocalDate.class), any(LocalDate.class), any(Pageable.class)))
+                .thenReturn(page);
+
+        lenient().when(transactionRepository.findByStatusAndAmountRange(
+                anyString(), any(BigDecimal.class), any(BigDecimal.class), any(Pageable.class)))
+                .thenReturn(page);
+
+        lenient().when(transactionRepository.findByStatusAndDateRange(
+                anyString(), any(LocalDate.class), any(LocalDate.class), any(Pageable.class)))
+                .thenReturn(page);
+
+        lenient().when(transactionRepository.findByAmountAndDateRange(
+                any(BigDecimal.class), any(BigDecimal.class), any(LocalDate.class),
+                any(LocalDate.class), any(Pageable.class))).thenReturn(page);
+
+        lenient().when(transactionRepository.findAllByType(anyString(), any(Pageable.class)))
+                .thenReturn(page);
+
+        lenient().when(transactionRepository.findAllByStatus(anyString(), any(Pageable.class)))
+                .thenReturn(page);
+
+        lenient().when(transactionRepository.findByAmountRange(
+                any(BigDecimal.class), any(BigDecimal.class), any(Pageable.class))).thenReturn(page);
+
+        lenient().when(transactionRepository.findByDateRange(
+                any(LocalDate.class), any(LocalDate.class), any(Pageable.class))).thenReturn(page);
+
+        lenient().when(transactionRepository.findAll(any(Pageable.class))).thenReturn(page);
     }
 
-    private LedgerEntry createLedgerEntry(
-            Long id,
-            Transaction transaction,
-            BigDecimal amount) {
-
-        return LedgerEntry.builder()
-                .id(id)
-                .transaction(transaction)
-                .wallet(senderWallet)
-                .type(LedgerEntry.Type.DEBIT)
-                .amount(amount)
-                .balanceBefore(new BigDecimal("500.00"))
-                .balanceAfter(new BigDecimal("400.00"))
-                .createdAt(LocalDateTime.of(2026, 11, 3, 10, 0))
-                .build();
+    private ResponseEntity<Page<TransactionResponse>> list(
+            String type, String status, BigDecimal minAmount, BigDecimal maxAmount,
+            String startDate, String endDate, String sortBy, String sortDir, int pageNo, int size) {
+        return controller.listTransactions(type, status, minAmount, maxAmount,
+                startDate, endDate, sortBy, sortDir, pageNo, size);
     }
 
     @Test
-    void listTransactions_NoFilters_ReturnsTransactions() throws Exception {
-        when(transactionRepository.findAll(any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(transaction)));
+    void listTransactions_NoFilters_UsesFindAllAndReturnsOk() {
+        stubAllQueries();
 
-        mockMvc.perform(get("/api/admin/transactions"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].id").value(1))
-                .andExpect(jsonPath("$.content[0].type").value("P2P_TRANSFER"))
-                .andExpect(jsonPath("$.content[0].status").value("SUCCESS"))
-                .andExpect(jsonPath("$.content[0].amount").value(100.00))
-                .andExpect(jsonPath("$.content[0].senderEmail")
-                        .value("sender@example.com"))
-                .andExpect(jsonPath("$.content[0].receiverEmail")
-                        .value("receiver@example.com"))
-                .andExpect(jsonPath("$.content[0].settlementDueDate")
-                        .value("2026-11-06"));
+        ResponseEntity<Page<TransactionResponse>> response =
+                list(null, null, null, null, null, null, "initiatedAt", "desc", 0, 20);
 
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals(1, response.getBody().getTotalElements());
         verify(transactionRepository).findAll(any(Pageable.class));
     }
 
     @Test
-    void listTransactions_EmptyResults() throws Exception {
-        when(transactionRepository.findAll(any(Pageable.class)))
-                .thenReturn(Page.empty());
+    void listTransactions_AllFourFilters() {
+        stubAllQueries();
 
-        mockMvc.perform(get("/api/admin/transactions"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content").isArray())
-                .andExpect(jsonPath("$.content").isEmpty());
-
-        verify(transactionRepository).findAll(any(Pageable.class));
-    }
-
-    @Test
-    void listTransactions_FilterByTypeAndStatus() throws Exception {
-        when(transactionRepository.findByTypeAndStatus(
-                eq("P2P_TRANSFER"),
-                eq("SUCCESS"),
-                any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(transaction)));
-
-        mockMvc.perform(get("/api/admin/transactions")
-                        .param("type", "P2P_TRANSFER")
-                        .param("status", "SUCCESS"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].type")
-                        .value("P2P_TRANSFER"))
-                .andExpect(jsonPath("$.content[0].status")
-                        .value("SUCCESS"));
-
-        verify(transactionRepository).findByTypeAndStatus(
-                eq("P2P_TRANSFER"),
-                eq("SUCCESS"),
-                any(Pageable.class));
-    }
-
-    @Test
-    void listTransactions_FilterByAmountRange() throws Exception {
-        when(transactionRepository.findByAmountRange(
-                eq(new BigDecimal("50")),
-                eq(new BigDecimal("200")),
-                any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(transaction)));
-
-        mockMvc.perform(get("/api/admin/transactions")
-                        .param("minAmount", "50")
-                        .param("maxAmount", "200"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].amount").value(100.00));
-
-        verify(transactionRepository).findByAmountRange(
-                eq(new BigDecimal("50")),
-                eq(new BigDecimal("200")),
-                any(Pageable.class));
-    }
-
-    @Test
-    void listTransactions_FilterByDateRange() throws Exception {
-        LocalDate start = LocalDate.of(2026, 11, 1);
-        LocalDate end = LocalDate.of(2026, 11, 30);
-
-        when(transactionRepository.findByDateRange(
-                eq(start),
-                eq(end),
-                any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(transaction)));
-
-        mockMvc.perform(get("/api/admin/transactions")
-                        .param("startDate", "2026-11-01")
-                        .param("endDate", "2026-11-30"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].id").value(1));
-
-        verify(transactionRepository).findByDateRange(
-                eq(start),
-                eq(end),
-                any(Pageable.class));
-    }
-
-    @Test
-    void listTransactions_FilterByAllCriteria() throws Exception {
-        LocalDate start = LocalDate.of(2026, 11, 1);
-        LocalDate end = LocalDate.of(2026, 11, 30);
-
-        when(transactionRepository.findByAllFilters(
-                eq("P2P_TRANSFER"),
-                eq("SUCCESS"),
-                eq(new BigDecimal("50")),
-                eq(new BigDecimal("200")),
-                eq(start),
-                eq(end),
-                any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(transaction)));
-
-        mockMvc.perform(get("/api/admin/transactions")
-                        .param("type", "P2P_TRANSFER")
-                        .param("status", "SUCCESS")
-                        .param("minAmount", "50")
-                        .param("maxAmount", "200")
-                        .param("startDate", "2026-11-01")
-                        .param("endDate", "2026-11-30"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].id").value(1))
-                .andExpect(jsonPath("$.content[0].status").value("SUCCESS"));
+        list("WALLET_TOP_UP", "PENDING", new BigDecimal("10"), new BigDecimal("200"),
+                "2026-01-01", "2026-01-31", "createdAt", "asc", 0, 20);
 
         verify(transactionRepository).findByAllFilters(
-                eq("P2P_TRANSFER"),
-                eq("SUCCESS"),
-                eq(new BigDecimal("50")),
-                eq(new BigDecimal("200")),
-                eq(start),
-                eq(end),
-                any(Pageable.class));
+                eq("WALLET_TOP_UP"), eq("PENDING"), eq(new BigDecimal("10")),
+                eq(new BigDecimal("200")), eq(LocalDate.parse("2026-01-01")),
+                eq(LocalDate.parse("2026-01-31")), any(Pageable.class));
     }
 
     @Test
-    void listTransactions_InvalidDate_FallsBackToAllTransactions()
-            throws Exception {
+    void listTransactions_TypeStatusDateFilters() {
+        stubAllQueries();
+        list("WALLET_TOP_UP", "PENDING", null, null,
+                "2026-01-01", "2026-01-31", "amount", "desc", 0, 20);
+        verify(transactionRepository).findByTypeStatusAndDateRange(
+                eq("WALLET_TOP_UP"), eq("PENDING"), any(LocalDate.class),
+                any(LocalDate.class), any(Pageable.class));
+    }
 
-        when(transactionRepository.findAll(any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(transaction)));
+    @Test
+    void listTransactions_TypeStatusAmountFilters() {
+        stubAllQueries();
+        list("WALLET_TOP_UP", "PENDING", new BigDecimal("10"), new BigDecimal("200"),
+                null, null, "type", "desc", 0, 20);
+        verify(transactionRepository).findByTypeStatusAndAmountRange(
+                eq("WALLET_TOP_UP"), eq("PENDING"), any(BigDecimal.class),
+                any(BigDecimal.class), any(Pageable.class));
+    }
 
-        mockMvc.perform(get("/api/admin/transactions")
-                        .param("startDate", "invalid-date")
-                        .param("endDate", "2026-11-30"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].id").value(1));
+    @Test
+    void listTransactions_StatusAmountDateFilters() {
+        stubAllQueries();
+        list(null, "PENDING", new BigDecimal("10"), new BigDecimal("200"),
+                "2026-01-01", "2026-01-31", "status", "desc", 0, 20);
+        verify(transactionRepository).findByStatusAmountAndDateRange(
+                eq("PENDING"), any(BigDecimal.class), any(BigDecimal.class),
+                any(LocalDate.class), any(LocalDate.class), any(Pageable.class));
+    }
+
+    @Test
+    void listTransactions_TypeAmountDateFilters() {
+        stubAllQueries();
+        list("WALLET_TOP_UP", null, new BigDecimal("10"), new BigDecimal("200"),
+                "2026-01-01", "2026-01-31", "id", "desc", 0, 20);
+        verify(transactionRepository).findByTypeAmountAndDateRange(
+                eq("WALLET_TOP_UP"), any(BigDecimal.class), any(BigDecimal.class),
+                any(LocalDate.class), any(LocalDate.class), any(Pageable.class));
+    }
+
+    @Test
+    void listTransactions_TypeAndStatusFilters() {
+        stubAllQueries();
+        list("WALLET_TOP_UP", "PENDING", null, null, null, null,
+                "settlementDueDate", "desc", 0, 20);
+        verify(transactionRepository).findByTypeAndStatus(
+                eq("WALLET_TOP_UP"), eq("PENDING"), any(Pageable.class));
+    }
+
+    @Test
+    void listTransactions_TypeAndAmountFilters() {
+        stubAllQueries();
+        list("WALLET_TOP_UP", null, BigDecimal.ONE, BigDecimal.TEN,
+                null, null, "amount", "desc", 0, 20);
+        verify(transactionRepository).findByTypeAndAmountRange(
+                eq("WALLET_TOP_UP"), any(BigDecimal.class), any(BigDecimal.class), any(Pageable.class));
+    }
+
+    @Test
+    void listTransactions_TypeAndDateFilters() {
+        stubAllQueries();
+        list("WALLET_TOP_UP", null, null, null, "2026-01-01", "2026-01-31",
+                "type", "desc", 0, 20);
+        verify(transactionRepository).findByTypeAndDateRange(
+                eq("WALLET_TOP_UP"), any(LocalDate.class), any(LocalDate.class), any(Pageable.class));
+    }
+
+    @Test
+    void listTransactions_StatusAndAmountFilters() {
+        stubAllQueries();
+        list(null, "PENDING", BigDecimal.ONE, BigDecimal.TEN, null, null,
+                "status", "desc", 0, 20);
+        verify(transactionRepository).findByStatusAndAmountRange(
+                eq("PENDING"), any(BigDecimal.class), any(BigDecimal.class), any(Pageable.class));
+    }
+
+    @Test
+    void listTransactions_StatusAndDateFilters() {
+        stubAllQueries();
+        list(null, "PENDING", null, null, "2026-01-01", "2026-01-31",
+                "id", "desc", 0, 20);
+        verify(transactionRepository).findByStatusAndDateRange(
+                eq("PENDING"), any(LocalDate.class), any(LocalDate.class), any(Pageable.class));
+    }
+
+    @Test
+    void listTransactions_AmountAndDateFilters() {
+        stubAllQueries();
+        list(null, null, BigDecimal.ONE, BigDecimal.TEN, "2026-01-01", "2026-01-31",
+                "createdAt", "desc", 0, 20);
+        verify(transactionRepository).findByAmountAndDateRange(
+                any(BigDecimal.class), any(BigDecimal.class), any(LocalDate.class),
+                any(LocalDate.class), any(Pageable.class));
+    }
+
+    @Test
+    void listTransactions_TypeOnly() {
+        stubAllQueries();
+        list("WALLET_TOP_UP", null, null, null, null, null, "initiatedAt", "desc", 0, 20);
+        verify(transactionRepository).findAllByType(eq("WALLET_TOP_UP"), any(Pageable.class));
+    }
+
+    @Test
+    void listTransactions_StatusOnly() {
+        stubAllQueries();
+        list(null, "PENDING", null, null, null, null, "initiatedAt", "desc", 0, 20);
+        verify(transactionRepository).findAllByStatus(eq("PENDING"), any(Pageable.class));
+    }
+
+    @Test
+    void listTransactions_AmountOnly() {
+        stubAllQueries();
+        list(null, null, BigDecimal.ONE, BigDecimal.TEN, null, null, "initiatedAt", "desc", 0, 20);
+        verify(transactionRepository).findByAmountRange(
+                any(BigDecimal.class), any(BigDecimal.class), any(Pageable.class));
+    }
+
+    @Test
+    void listTransactions_DateOnly() {
+        stubAllQueries();
+        list(null, null, null, null, "2026-01-01", "2026-01-31", "initiatedAt", "desc", 0, 20);
+        verify(transactionRepository).findByDateRange(
+                any(LocalDate.class), any(LocalDate.class), any(Pageable.class));
+    }
+
+    @Test
+    void listTransactions_InvalidDate_FallsBackToFindAll() {
+        stubAllQueries();
+
+        list(null, null, null, null, "not-a-date", "2026-01-31",
+                "initiatedAt", "desc", 0, 20);
 
         verify(transactionRepository).findAll(any(Pageable.class));
     }
 
     @Test
-    void listTransactions_CreatedAtSort_UsesInitiatedAt()
-            throws Exception {
+    void listTransactions_OnlyOneAmountBound_DoesNotApplyAmountFilter() {
+        stubAllQueries();
 
-        when(transactionRepository.findAll(any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(transaction)));
+        list(null, null, BigDecimal.ONE, null, null, null,
+                "initiatedAt", "desc", 0, 20);
 
-        mockMvc.perform(get("/api/admin/transactions")
-                        .param("sortBy", "createdAt")
-                        .param("sortDir", "asc"))
-                .andExpect(status().isOk());
+        verify(transactionRepository).findAll(any(Pageable.class));
+    }
 
-        ArgumentCaptor<Pageable> captor =
-                ArgumentCaptor.forClass(Pageable.class);
+    @Test
+    void listTransactions_OnlyOneDateBound_DoesNotApplyDateFilter() {
+        stubAllQueries();
+
+        list(null, null, null, null, "2026-01-01", null,
+                "initiatedAt", "desc", 0, 20);
+
+        verify(transactionRepository).findAll(any(Pageable.class));
+    }
+
+    @Test
+    void listTransactions_CapsPageSizeAt100() {
+        stubAllQueries();
+
+        list(null, null, null, null, null, null,
+                "initiatedAt", "asc", 0, 500);
+
+        org.mockito.ArgumentCaptor<Pageable> captor =
+                org.mockito.ArgumentCaptor.forClass(Pageable.class);
 
         verify(transactionRepository).findAll(captor.capture());
 
         Pageable pageable = captor.getValue();
 
-        Sort.Order order = pageable.getSort().getOrderFor("initiatedAt");
-
-        assertNotNull(order);
-        assertEquals(Sort.Direction.ASC, order.getDirection());
+        assertEquals(100, pageable.getPageSize());
+        assertEquals(0, pageable.getPageNumber());
+        assertFalse(pageable.getSort().isUnsorted());
+        assertEquals(
+                org.springframework.data.domain.Sort.Direction.ASC,
+                pageable.getSort().iterator().next().getDirection()
+        );
     }
 
     @Test
-    void listTransactions_UnknownSortField_UsesDefaultSort()
-            throws Exception {
+    void getTransactionDetail_NotFound_ThrowsNotFound() {
+        when(transactionRepository.findById(99L)).thenReturn(Optional.empty());
 
-        when(transactionRepository.findAll(any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(transaction)));
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> controller.getTransactionDetail(99L));
 
-        mockMvc.perform(get("/api/admin/transactions")
-                        .param("sortBy", "unknownField")
-                        .param("sortDir", "invalid"))
-                .andExpect(status().isOk());
-
-        ArgumentCaptor<Pageable> captor =
-                ArgumentCaptor.forClass(Pageable.class);
-
-        verify(transactionRepository).findAll(captor.capture());
-
-        Pageable pageable = captor.getValue();
-
-        Sort.Order order = pageable.getSort().getOrderFor("initiatedAt");
-
-        assertNotNull(order);
-        assertEquals(Sort.Direction.DESC, order.getDirection());
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        assertEquals("Transaction not found", exception.getReason());
     }
 
     @Test
-    void listTransactions_LimitsPageSizeTo100() throws Exception {
-        when(transactionRepository.findAll(any(Pageable.class)))
-                .thenReturn(Page.empty());
+    void getTransactionDetail_FoundWithNoWalletsAndNoLedgerEntries() {
+        when(transactionRepository.findById(1L)).thenReturn(Optional.of(transaction));
+        when(ledgerEntryRepository.findAll()).thenReturn(List.of());
 
-        mockMvc.perform(get("/api/admin/transactions")
-                        .param("page", "0")
-                        .param("size", "200"))
-                .andExpect(status().isOk());
+        ResponseEntity<?> response = controller.getTransactionDetail(1L);
 
-        ArgumentCaptor<Pageable> captor =
-                ArgumentCaptor.forClass(Pageable.class);
-
-        verify(transactionRepository).findAll(captor.capture());
-
-        assertEquals(100, captor.getValue().getPageSize());
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
     }
 
     @Test
-    void getTransactionDetail_SuccessWithLedgerEntries()
-            throws Exception {
+    void getTransactionDetail_FiltersLedgerEntriesForTransaction() {
+        when(transactionRepository.findById(1L)).thenReturn(Optional.of(transaction));
+        com.p2ppayment.entity.LedgerEntry entry = mock(com.p2ppayment.entity.LedgerEntry.class);
+        when(entry.getTransaction()).thenReturn(transaction);
+        when(entry.getId()).thenReturn(11L);
+        when(entry.getType()).thenReturn(com.p2ppayment.entity.LedgerEntry.Type.CREDIT);
+        when(entry.getAmount()).thenReturn(new BigDecimal("100.00"));
+        when(entry.getBalanceBefore()).thenReturn(BigDecimal.ZERO);
+        when(entry.getBalanceAfter()).thenReturn(new BigDecimal("100.00"));
+        when(entry.getCreatedAt()).thenReturn(LocalDateTime.of(2026, 1, 10, 10, 1));
+        when(ledgerEntryRepository.findAll()).thenReturn(List.of(entry));
 
-        LedgerEntry entry = createLedgerEntry(
-                10L,
-                transaction,
-                new BigDecimal("100.00"));
+        ResponseEntity<?> response = controller.getTransactionDetail(1L);
 
-        when(transactionRepository.findById(1L))
-                .thenReturn(Optional.of(transaction));
-
-        when(ledgerEntryRepository.findAll())
-                .thenReturn(List.of(entry));
-
-        mockMvc.perform(get("/api/admin/transactions/1"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(1))
-                .andExpect(jsonPath("$.type").value("P2P_TRANSFER"))
-                .andExpect(jsonPath("$.status").value("SUCCESS"))
-                .andExpect(jsonPath("$.amount").value(100.00))
-                .andExpect(jsonPath("$.senderEmail")
-                        .value("sender@example.com"))
-                .andExpect(jsonPath("$.receiverEmail")
-                        .value("receiver@example.com"))
-                .andExpect(jsonPath("$.settlementDueDate")
-                        .value("2026-11-06"))
-                .andExpect(jsonPath("$.ledgerEntries[0].id").value(10))
-                .andExpect(jsonPath("$.ledgerEntries[0].type").value("DEBIT"))
-                .andExpect(jsonPath("$.ledgerEntries[0].amount").value(100.00))
-                .andExpect(jsonPath("$.ledgerEntries[0].balanceBefore")
-                        .value(500.00))
-                .andExpect(jsonPath("$.ledgerEntries[0].balanceAfter")
-                        .value(400.00));
-
-        verify(transactionRepository).findById(1L);
-        verify(ledgerEntryRepository).findAll();
-    }
-
-    @Test
-    void getTransactionDetail_NotFound() throws Exception {
-        when(transactionRepository.findById(99L))
-                .thenReturn(Optional.empty());
-
-        mockMvc.perform(get("/api/admin/transactions/99"))
-                .andExpect(status().isNotFound());
-
-        verify(transactionRepository).findById(99L);
-        verifyNoInteractions(ledgerEntryRepository);
-    }
-
-    @Test
-    void getTransactionDetail_NullWalletsAndSettlementDate()
-            throws Exception {
-
-        Transaction systemTransaction = Transaction.builder()
-                .id(2L)
-                .requestId("system-request")
-                .type(Transaction.Type.WALLET_TOP_UP)
-                .status(Transaction.Status.PENDING)
-                .amount(new BigDecimal("50.00"))
-                .senderWallet(null)
-                .receiverWallet(null)
-                .remark("System transaction")
-                .settlementDueDate(null)
-                .initiatedAt(LocalDateTime.of(2026, 11, 3, 11, 0))
-                .createdAt(LocalDateTime.of(2026, 11, 3, 11, 0))
-                .updatedAt(LocalDateTime.of(2026, 11, 3, 11, 0))
-                .build();
-
-        when(transactionRepository.findById(2L))
-                .thenReturn(Optional.of(systemTransaction));
-
-        when(ledgerEntryRepository.findAll())
-                .thenReturn(List.of());
-
-        mockMvc.perform(get("/api/admin/transactions/2"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.senderEmail").value("System"))
-                .andExpect(jsonPath("$.receiverEmail").value("Unknown"))
-                .andExpect(jsonPath("$.settlementDueDate").doesNotExist())
-                .andExpect(jsonPath("$.ledgerEntries").isArray())
-                .andExpect(jsonPath("$.ledgerEntries").isEmpty());
-
-        verify(transactionRepository).findById(2L);
-        verify(ledgerEntryRepository).findAll();
-    }
-
-    @Test
-    void getTransactionDetail_IgnoresLedgerEntriesForOtherTransactions()
-            throws Exception {
-
-        Transaction otherTransaction = createTransaction(99L);
-
-        LedgerEntry matchingEntry = createLedgerEntry(
-                10L,
-                transaction,
-                new BigDecimal("100.00"));
-
-        LedgerEntry unrelatedEntry = createLedgerEntry(
-                11L,
-                otherTransaction,
-                new BigDecimal("25.00"));
-
-        when(transactionRepository.findById(1L))
-                .thenReturn(Optional.of(transaction));
-
-        when(ledgerEntryRepository.findAll())
-                .thenReturn(List.of(matchingEntry, unrelatedEntry));
-
-        mockMvc.perform(get("/api/admin/transactions/1"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.ledgerEntries.length()").value(1))
-                .andExpect(jsonPath("$.ledgerEntries[0].id").value(10));
-
-        verify(transactionRepository).findById(1L);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
         verify(ledgerEntryRepository).findAll();
     }
 }

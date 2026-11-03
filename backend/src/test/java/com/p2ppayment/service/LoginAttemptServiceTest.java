@@ -1,8 +1,8 @@
 package com.p2ppayment.service;
 
-import com.p2ppayment.model.LoginAttempt;
-import com.p2ppayment.model.Notification;
-import com.p2ppayment.model.User;
+import com.p2ppayment.entity.LoginAttempt;
+import com.p2ppayment.entity.Notification;
+import com.p2ppayment.entity.User;
 import com.p2ppayment.repository.LoginAttemptRepository;
 import com.p2ppayment.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,9 +15,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -36,7 +35,6 @@ class LoginAttemptServiceTest {
     private LoginAttemptService loginAttemptService;
 
     private User testUser;
-    private LoginAttempt testLoginAttempt;
 
     @BeforeEach
     void setUp() {
@@ -46,117 +44,91 @@ class LoginAttemptServiceTest {
         testUser.setAccountLocked(false);
         testUser.setFailedLoginAttempts(0);
 
-        testLoginAttempt = new LoginAttempt();
-        testLoginAttempt.setId(1L);
-        testLoginAttempt.setUser(testUser);
-        testLoginAttempt.setSuccess(false);
-        testLoginAttempt.setAttemptedAt(LocalDateTime.now());
-
-        // Set default values for @Value fields
-        ReflectionTestUtils.setField(loginAttemptService, "maxFailedAttempts", 5);
-        ReflectionTestUtils.setField(loginAttemptService, "lockoutMinutes", 30);
-    }
-
-    @Test
-    void recordSuccessfulAttempt_ResetsFailedAttempts() {
-        // Arrange
-        testUser.setFailedLoginAttempts(3);
-        doNothing().when(userRepository).resetFailedLoginAttempts(anyLong());
-        when(loginAttemptRepository.save(any(LoginAttempt.class))).thenReturn(testLoginAttempt);
-
-        // Act
-        loginAttemptService.recordSuccessfulAttempt(testUser, "127.0.0.1");
-
-        // Assert
-        verify(userRepository, times(1)).resetFailedLoginAttempts(eq(1L));
-        verify(loginAttemptRepository, times(1)).save(any(LoginAttempt.class));
+        ReflectionTestUtils.setField(
+                loginAttemptService, "maxFailedAttempts", 5);
+        ReflectionTestUtils.setField(
+                loginAttemptService, "lockoutMinutes", 30);
     }
 
     @Test
     void recordFailedAttempt_IncrementsFailedAttempts() {
-        // Arrange
-        testUser.setFailedLoginAttempts(2);
-        doNothing().when(userRepository).incrementFailedLoginAttempts(anyLong());
-        when(userRepository.getFailedLoginAttempts(anyLong())).thenReturn(3);
-        when(loginAttemptRepository.save(any(LoginAttempt.class))).thenReturn(testLoginAttempt);
+        when(userRepository.getFailedLoginAttempts(1L)).thenReturn(3);
 
-        // Act
         loginAttemptService.recordFailedAttempt(testUser, "127.0.0.1");
 
-        // Assert
-        verify(userRepository, times(1)).incrementFailedLoginAttempts(eq(1L));
-        verify(userRepository, times(1)).getFailedLoginAttempts(eq(1L));
-        verify(loginAttemptRepository, times(1)).save(any(LoginAttempt.class));
-        verify(userRepository, never()).lockAccount(anyLong(), any(LocalDateTime.class));
+        verify(userRepository).incrementFailedLoginAttempts(1L);
+        verify(userRepository).getFailedLoginAttempts(1L);
+        verify(loginAttemptRepository).save(argThat(attempt ->
+                attempt.getUser().equals(testUser)
+                        && Boolean.FALSE.equals(attempt.getSuccess())
+                        && "127.0.0.1".equals(attempt.getIpAddress())
+        ));
+        verify(userRepository, never())
+                .lockAccount(anyLong(), any(LocalDateTime.class));
     }
 
     @Test
     void recordFailedAttempt_FifthFailure_LocksAccount() {
-        // Arrange
-        testUser.setFailedLoginAttempts(4);
-        doNothing().when(userRepository).incrementFailedLoginAttempts(anyLong());
-        when(userRepository.getFailedLoginAttempts(anyLong())).thenReturn(5);
-        doNothing().when(userRepository).lockAccount(anyLong(), any(LocalDateTime.class));
-        when(loginAttemptRepository.save(any(LoginAttempt.class))).thenReturn(testLoginAttempt);
-        doNothing().when(notificationService).create(anyLong(), any(Notification.Type.class), anyString(), anyString());
+        when(userRepository.getFailedLoginAttempts(1L)).thenReturn(5);
 
-        // Act
         loginAttemptService.recordFailedAttempt(testUser, "127.0.0.1");
 
-        // Assert
-        verify(userRepository, times(1)).incrementFailedLoginAttempts(eq(1L));
-        verify(userRepository, times(1)).getFailedLoginAttempts(eq(1L));
-        verify(userRepository, times(1)).lockAccount(eq(1L), any(LocalDateTime.class));
-        verify(loginAttemptRepository, times(1)).save(any(LoginAttempt.class));
-        verify(notificationService, times(1)).create(eq(1L), eq(Notification.Type.ACCOUNT_LOCKED), anyString(), anyString());
+        verify(userRepository).incrementFailedLoginAttempts(1L);
+        verify(userRepository).getFailedLoginAttempts(1L);
+        verify(userRepository).lockAccount(
+                eq(1L), any(LocalDateTime.class));
+
+        verify(loginAttemptRepository).save(any(LoginAttempt.class));
+        verify(notificationService).create(
+                eq(1L),
+                eq(Notification.Type.ACCOUNT_LOCKED),
+                eq("Account Locked"),
+                anyString()
+        );
     }
 
     @Test
     void unlockAccount_Success() {
-        // Arrange
         testUser.setAccountLocked(true);
-        testUser.setLockedUntil(LocalDateTime.now().plusMinutes(30));
-        doNothing().when(userRepository).unlockAccount(anyLong());
 
-        // Act
         loginAttemptService.unlockAccount(testUser);
 
-        // Assert
-        verify(userRepository, times(1)).unlockAccount(eq(1L));
+        verify(userRepository).unlockAccount(1L);
     }
 
     @Test
     void recordFailedAttempt_NotificationFailure_DoesNotStopProcess() {
-        // Arrange
-        testUser.setFailedLoginAttempts(4);
-        doNothing().when(userRepository).incrementFailedLoginAttempts(anyLong());
-        when(userRepository.getFailedLoginAttempts(anyLong())).thenReturn(5);
-        doNothing().when(userRepository).lockAccount(anyLong(), any(LocalDateTime.class));
-        when(loginAttemptRepository.save(any(LoginAttempt.class))).thenReturn(testLoginAttempt);
+        when(userRepository.getFailedLoginAttempts(1L)).thenReturn(5);
+
         doThrow(new RuntimeException("Notification service down"))
-            .when(notificationService).create(anyLong(), any(Notification.Type.class), anyString(), anyString());
+                .when(notificationService)
+                .create(
+                        anyLong(),
+                        any(Notification.Type.class),
+                        anyString(),
+                        anyString()
+                );
 
-        // Act - should not throw exception
-        loginAttemptService.recordFailedAttempt(testUser, "127.0.0.1");
+        assertDoesNotThrow(() ->
+                loginAttemptService.recordFailedAttempt(
+                        testUser, "127.0.0.1"));
 
-        // Assert - account should still be locked
-        verify(userRepository, times(1)).lockAccount(eq(1L), any(LocalDateTime.class));
+        verify(userRepository).lockAccount(
+                eq(1L), any(LocalDateTime.class));
+        verify(loginAttemptRepository).save(any(LoginAttempt.class));
     }
 
     @Test
-    void recordSuccessfulAttempt_SavesAuditTrail() {
-        // Arrange
-        doNothing().when(userRepository).resetFailedLoginAttempts(anyLong());
-        when(loginAttemptRepository.save(any(LoginAttempt.class))).thenReturn(testLoginAttempt);
+    void recordSuccessfulAttempt_ResetsCounterAndSavesAuditTrail() {
+        loginAttemptService.recordSuccessfulAttempt(
+                testUser, "192.168.1.1");
 
-        // Act
-        loginAttemptService.recordSuccessfulAttempt(testUser, "192.168.1.1");
+        verify(userRepository).resetFailedLoginAttempts(1L);
 
-        // Assert
-        verify(loginAttemptRepository, times(1)).save(argThat(attempt ->
-            attempt.getUser().equals(testUser) &&
-            attempt.getSuccess() &&
-            "192.168.1.1".equals(attempt.getIpAddress())
+        verify(loginAttemptRepository).save(argThat(attempt ->
+                attempt.getUser().equals(testUser)
+                        && Boolean.TRUE.equals(attempt.getSuccess())
+                        && "192.168.1.1".equals(attempt.getIpAddress())
         ));
     }
 }

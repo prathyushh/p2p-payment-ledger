@@ -1,8 +1,8 @@
 package com.p2ppayment.service;
 
-import com.p2ppayment.model.SimulatedAccountTransaction;
-import com.p2ppayment.model.SimulatedBankAccount;
-import com.p2ppayment.model.User;
+import com.p2ppayment.entity.SimulatedAccountTransaction;
+import com.p2ppayment.entity.SimulatedBankAccount;
+import com.p2ppayment.entity.User;
 import com.p2ppayment.repository.SimulatedAccountTransactionRepository;
 import com.p2ppayment.repository.SimulatedBankAccountRepository;
 import com.p2ppayment.repository.UserRepository;
@@ -15,13 +15,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -51,162 +49,255 @@ class BankAccountServiceTest {
         testAccount = new SimulatedBankAccount();
         testAccount.setId(1L);
         testAccount.setUser(testUser);
+        testAccount.setBankName("Test Bank");
         testAccount.setAccountNickname("Test Account");
-        testAccount.setAccountIdentifier("ACC-12345");
+        testAccount.setAccountIdentifier("DEMO-1234567890");
         testAccount.setSimulatedBalance(new BigDecimal("5000.00"));
         testAccount.setIsActive(true);
     }
 
     @Test
-    void createAccount_Success() {
-        // Arrange
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(bankAccountRepository.save(any(SimulatedBankAccount.class))).thenReturn(testAccount);
+    void createBankAccount_Success() {
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
 
-        // Act
-        SimulatedBankAccount result = bankAccountService.createBankAccount(1L, "Test Bank", "Test Account");
+        when(bankAccountRepository.save(any(SimulatedBankAccount.class)))
+                .thenAnswer(invocation -> {
+                    SimulatedBankAccount account = invocation.getArgument(0);
+                    account.setId(1L);
+                    return account;
+                });
 
-        // Assert
+        SimulatedBankAccount result = bankAccountService.createBankAccount(
+                1L, "Test Bank", "Test Account"
+        );
+
         assertNotNull(result);
+        assertEquals("Test Bank", result.getBankName());
         assertEquals("Test Account", result.getAccountNickname());
-        verify(bankAccountRepository, times(1)).save(any(SimulatedBankAccount.class));
+        assertEquals(BigDecimal.ZERO, result.getSimulatedBalance());
+        assertTrue(result.getIsActive());
+        assertNotNull(result.getAccountIdentifier());
+        assertTrue(result.getAccountIdentifier().startsWith("DEMO-"));
+
+        verify(bankAccountRepository).save(any(SimulatedBankAccount.class));
     }
 
     @Test
-    void createAccount_UserNotFound_ThrowsException() {
-        // Arrange
-        when(userRepository.findById(1L)).thenReturn(Optional.empty());
+    void createBankAccount_UserNotFound_ThrowsNotFound() {
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.empty());
 
-        // Act & Assert
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
-            bankAccountService.createBankAccount(1L, "Test Bank", "Test Account");
-        });
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> bankAccountService.createBankAccount(
+                        1L, "Test Bank", "Test Account"
+                )
+        );
 
         assertEquals(404, exception.getStatusCode().value());
         assertTrue(exception.getReason().contains("User not found"));
+
+        verify(bankAccountRepository, never())
+                .save(any(SimulatedBankAccount.class));
     }
 
     @Test
-    void getAccounts_Success() {
-        // Arrange
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+    void listBankAccounts_Success() {
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
         when(bankAccountRepository.findByUser(testUser))
-            .thenReturn(Arrays.asList(testAccount));
+                .thenReturn(List.of(testAccount));
 
-        // Act
-        List<SimulatedBankAccount> result = bankAccountService.listBankAccounts(1L);
+        List<SimulatedBankAccount> result =
+                bankAccountService.listBankAccounts(1L);
 
-        // Assert
         assertNotNull(result);
         assertEquals(1, result.size());
-        assertEquals(testAccount.getId(), result.get(0).getId());
+        assertEquals(1L, result.get(0).getId());
+        assertEquals("Test Account", result.get(0).getAccountNickname());
     }
 
     @Test
-    void getAccount_Success() {
-        // Arrange
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(bankAccountRepository.findByIdAndUser(1L, testUser)).thenReturn(Optional.of(testAccount));
+    void listBankAccounts_UserNotFound_ThrowsNotFound() {
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.empty());
 
-        // Act
-        SimulatedBankAccount result = bankAccountService.getBankAccount(1L, 1L);
-
-        // Assert
-        assertNotNull(result);
-        assertEquals(1L, result.getId());
-    }
-
-    @Test
-    void getAccount_Unauthorized_ThrowsException() {
-        // Arrange
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(bankAccountRepository.findByIdAndUser(1L, testUser)).thenReturn(Optional.empty());
-
-        // Act & Assert
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
-            bankAccountService.getBankAccount(1L, 1L);
-        });
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> bankAccountService.listBankAccounts(1L)
+        );
 
         assertEquals(404, exception.getStatusCode().value());
+
+        verify(bankAccountRepository, never()).findByUser(any(User.class));
     }
 
     @Test
-    void deactivateAccount_Success() {
-        // Arrange
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(bankAccountRepository.findByIdAndUser(1L, testUser)).thenReturn(Optional.of(testAccount));
-        when(bankAccountRepository.save(any(SimulatedBankAccount.class))).thenReturn(testAccount);
+    void getBankAccount_Success() {
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(bankAccountRepository.findByIdAndUser(1L, testUser))
+                .thenReturn(Optional.of(testAccount));
 
-        // Act
-        SimulatedBankAccount result = bankAccountService.deactivateBankAccount(1L, 1L);
+        SimulatedBankAccount result =
+                bankAccountService.getBankAccount(1L, 1L);
 
-        // Assert
+        assertNotNull(result);
+        assertEquals(1L, result.getId());
+        assertEquals("Test Account", result.getAccountNickname());
+    }
+
+    @Test
+    void getBankAccount_AccountNotOwnedOrMissing_ThrowsNotFound() {
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(bankAccountRepository.findByIdAndUser(2L, testUser))
+                .thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> bankAccountService.getBankAccount(2L, 1L)
+        );
+
+        assertEquals(404, exception.getStatusCode().value());
+        assertTrue(exception.getReason().contains("access denied"));
+    }
+
+    @Test
+    void deactivateBankAccount_Success() {
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(bankAccountRepository.findByIdAndUser(1L, testUser))
+                .thenReturn(Optional.of(testAccount));
+        when(bankAccountRepository.save(any(SimulatedBankAccount.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        SimulatedBankAccount result =
+                bankAccountService.deactivateBankAccount(1L, 1L);
+
         assertNotNull(result);
         assertFalse(result.getIsActive());
-        verify(bankAccountRepository, times(1)).save(any(SimulatedBankAccount.class));
+
+        verify(bankAccountRepository).save(testAccount);
     }
 
     @Test
-    void deactivateAccount_AlreadyInactive_ThrowsException() {
-        // Arrange
+    void deactivateBankAccount_AlreadyInactive_ThrowsConflict() {
         testAccount.setIsActive(false);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(bankAccountRepository.findByIdAndUser(1L, testUser)).thenReturn(Optional.of(testAccount));
 
-        // Act & Assert
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
-            bankAccountService.deactivateBankAccount(1L, 1L);
-        });
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(bankAccountRepository.findByIdAndUser(1L, testUser))
+                .thenReturn(Optional.of(testAccount));
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> bankAccountService.deactivateBankAccount(1L, 1L)
+        );
 
         assertEquals(409, exception.getStatusCode().value());
         assertTrue(exception.getReason().contains("already inactive"));
+
+        verify(bankAccountRepository, never())
+                .save(any(SimulatedBankAccount.class));
     }
 
     @Test
     void addDemoFunds_Success() {
-        // Arrange
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(bankAccountRepository.findByIdAndUser(1L, testUser)).thenReturn(Optional.of(testAccount));
-        when(bankAccountRepository.save(any(SimulatedBankAccount.class))).thenReturn(testAccount);
-        when(transactionRepository.save(any(SimulatedAccountTransaction.class))).thenReturn(null);
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(bankAccountRepository.findByIdAndUser(1L, testUser))
+                .thenReturn(Optional.of(testAccount));
+        when(bankAccountRepository.save(any(SimulatedBankAccount.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(transactionRepository.save(any(SimulatedAccountTransaction.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
-        // Act
-        SimulatedBankAccount result = bankAccountService.addDemoFunds(1L, 1L, new BigDecimal("1000.00"));
+        SimulatedBankAccount result = bankAccountService.addDemoFunds(
+                1L, 1L, new BigDecimal("1000.00")
+        );
 
-        // Assert
         assertNotNull(result);
-        verify(bankAccountRepository, times(1)).save(any(SimulatedBankAccount.class));
-        verify(transactionRepository, times(1)).save(any(SimulatedAccountTransaction.class));
+        assertEquals(
+                0,
+                new BigDecimal("6000.00")
+                        .compareTo(result.getSimulatedBalance())
+        );
+
+        verify(bankAccountRepository).save(testAccount);
+        verify(transactionRepository).save(
+                argThat(transaction ->
+                        "DEMO_FUND_ADDED".equals(transaction.getOperationType())
+                                && "CREDIT".equals(transaction.getDirection())
+                                && "SUCCESS".equals(transaction.getOutcome())
+                )
+        );
     }
 
     @Test
-    void addDemoFunds_InvalidAmount_ThrowsException() {
-        // Arrange
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(bankAccountRepository.findByIdAndUser(1L, testUser)).thenReturn(Optional.of(testAccount));
+    void addDemoFunds_ZeroAmount_ThrowsBadRequest() {
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(bankAccountRepository.findByIdAndUser(1L, testUser))
+                .thenReturn(Optional.of(testAccount));
 
-        // Act & Assert
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
-            bankAccountService.addDemoFunds(1L, 1L, BigDecimal.ZERO);
-        });
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> bankAccountService.addDemoFunds(
+                        1L, 1L, BigDecimal.ZERO
+                )
+        );
 
         assertEquals(400, exception.getStatusCode().value());
-        assertTrue(exception.getReason().contains("Amount must be greater than zero"));
+        assertTrue(exception.getReason()
+                .contains("Amount must be greater than zero"));
+
+        verify(bankAccountRepository, never())
+                .save(any(SimulatedBankAccount.class));
+        verify(transactionRepository, never())
+                .save(any(SimulatedAccountTransaction.class));
     }
 
     @Test
-    void addDemoFunds_InactiveAccount_ThrowsException() {
-        // Arrange
-        testAccount.setIsActive(false);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(bankAccountRepository.findByIdAndUser(1L, testUser)).thenReturn(Optional.of(testAccount));
+    void addDemoFunds_NegativeAmount_ThrowsBadRequest() {
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(bankAccountRepository.findByIdAndUser(1L, testUser))
+                .thenReturn(Optional.of(testAccount));
 
-        // Act & Assert
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
-            bankAccountService.addDemoFunds(1L, 1L, new BigDecimal("1000.00"));
-        });
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> bankAccountService.addDemoFunds(
+                        1L, 1L, new BigDecimal("-100.00")
+                )
+        );
+
+        assertEquals(400, exception.getStatusCode().value());
+    }
+
+    @Test
+    void addDemoFunds_InactiveAccount_ThrowsConflict() {
+        testAccount.setIsActive(false);
+
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(bankAccountRepository.findByIdAndUser(1L, testUser))
+                .thenReturn(Optional.of(testAccount));
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> bankAccountService.addDemoFunds(
+                        1L, 1L, new BigDecimal("1000.00")
+                )
+        );
 
         assertEquals(409, exception.getStatusCode().value());
         assertTrue(exception.getReason().contains("inactive"));
+
+        verify(bankAccountRepository, never())
+                .save(any(SimulatedBankAccount.class));
+        verify(transactionRepository, never())
+                .save(any(SimulatedAccountTransaction.class));
     }
 }

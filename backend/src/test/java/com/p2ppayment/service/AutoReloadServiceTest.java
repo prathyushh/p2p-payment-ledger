@@ -1,6 +1,6 @@
 package com.p2ppayment.service;
 
-import com.p2ppayment.model.*;
+import com.p2ppayment.entity.*;
 import com.p2ppayment.repository.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -86,219 +86,397 @@ class AutoReloadServiceTest {
 
     @Test
     void getSettings_ExistingSettings_ReturnsSettings() {
-        // Arrange
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(walletRepository.findByUser(testUser)).thenReturn(Optional.of(testWallet));
-        when(autoReloadSettingsRepository.findByWallet(testWallet)).thenReturn(Optional.of(testSettings));
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(walletRepository.findByUser(testUser))
+                .thenReturn(Optional.of(testWallet));
+        when(autoReloadSettingsRepository.findByWallet(testWallet))
+                .thenReturn(Optional.of(testSettings));
 
-        // Act
         AutoReloadSettings result = autoReloadService.getSettings(1L);
 
-        // Assert
         assertNotNull(result);
         assertEquals(1L, result.getId());
         assertEquals(testWallet.getId(), result.getWallet().getId());
+        verify(autoReloadSettingsRepository, never())
+                .save(any(AutoReloadSettings.class));
     }
 
     @Test
-    void getSettings_NoExistingSettings_CreatesNewSettings() {
-        // Arrange
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(walletRepository.findByUser(testUser)).thenReturn(Optional.of(testWallet));
-        when(autoReloadSettingsRepository.findByWallet(testWallet)).thenReturn(Optional.empty());
-        when(autoReloadSettingsRepository.save(any(AutoReloadSettings.class))).thenReturn(testSettings);
+    void getSettings_NoExistingSettings_CreatesSettings() {
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(walletRepository.findByUser(testUser))
+                .thenReturn(Optional.of(testWallet));
+        when(autoReloadSettingsRepository.findByWallet(testWallet))
+                .thenReturn(Optional.empty());
+        when(autoReloadSettingsRepository.save(any(AutoReloadSettings.class)))
+                .thenReturn(testSettings);
 
-        // Act
         AutoReloadSettings result = autoReloadService.getSettings(1L);
 
-        // Assert
         assertNotNull(result);
-        verify(autoReloadSettingsRepository, times(1)).save(any(AutoReloadSettings.class));
+        verify(autoReloadSettingsRepository)
+                .save(any(AutoReloadSettings.class));
+    }
+
+    @Test
+    void getSettings_UserNotFound_ThrowsNotFound() {
+        when(userRepository.findById(1L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> autoReloadService.getSettings(1L)
+        );
+
+        assertEquals(404, exception.getStatusCode().value());
+    }
+
+    @Test
+    void getSettings_WalletNotFound_ThrowsNotFound() {
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(walletRepository.findByUser(testUser))
+                .thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> autoReloadService.getSettings(1L)
+        );
+
+        assertEquals(404, exception.getStatusCode().value());
     }
 
     @Test
     void updateSettings_EnableWithValidData_Success() {
-        // Arrange
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(walletRepository.findByUser(testUser)).thenReturn(Optional.of(testWallet));
-        when(simulatedBankAccountRepository.findById(1L)).thenReturn(Optional.of(testBankAccount));
-        when(autoReloadSettingsRepository.findByWallet(testWallet)).thenReturn(Optional.of(testSettings));
-        when(autoReloadSettingsRepository.save(any(AutoReloadSettings.class))).thenReturn(testSettings);
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(walletRepository.findByUser(testUser))
+                .thenReturn(Optional.of(testWallet));
+        when(simulatedBankAccountRepository.findById(1L))
+                .thenReturn(Optional.of(testBankAccount));
+        when(autoReloadSettingsRepository.findByWallet(testWallet))
+                .thenReturn(Optional.of(testSettings));
+        when(autoReloadSettingsRepository.save(any(AutoReloadSettings.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
-        // Act
-        AutoReloadSettings result = autoReloadService.updateSettings(1L, true, 1L, 
-            new BigDecimal("1000.00"), new BigDecimal("2000.00"));
+        AutoReloadSettings result = autoReloadService.updateSettings(
+                1L,
+                true,
+                1L,
+                new BigDecimal("1000.00"),
+                new BigDecimal("2000.00")
+        );
 
-        // Assert
         assertNotNull(result);
         assertTrue(result.getIsEnabled());
-        verify(autoReloadSettingsRepository, times(1)).save(any(AutoReloadSettings.class));
+        assertEquals(
+                0,
+                new BigDecimal("1000.00")
+                        .compareTo(result.getThresholdAmount())
+        );
+        assertEquals(
+                0,
+                new BigDecimal("2000.00")
+                        .compareTo(result.getReloadAmount())
+        );
+
+        verify(autoReloadSettingsRepository)
+                .save(any(AutoReloadSettings.class));
     }
 
     @Test
-    void updateSettings_EnableWithInactiveWallet_ThrowsException() {
-        // Arrange
+    void updateSettings_EnableWithInactiveWallet_ThrowsConflict() {
         testWallet.setStatus(Wallet.Status.INACTIVE);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(walletRepository.findByUser(testUser)).thenReturn(Optional.of(testWallet));
 
-        // Act & Assert
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
-            autoReloadService.updateSettings(1L, true, 1L, 
-                new BigDecimal("1000.00"), new BigDecimal("2000.00"));
-        });
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(walletRepository.findByUser(testUser))
+                .thenReturn(Optional.of(testWallet));
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> autoReloadService.updateSettings(
+                        1L,
+                        true,
+                        1L,
+                        new BigDecimal("1000.00"),
+                        new BigDecimal("2000.00")
+                )
+        );
 
         assertEquals(409, exception.getStatusCode().value());
         assertTrue(exception.getReason().contains("Wallet must be ACTIVE"));
     }
 
     @Test
-    void updateSettings_EnableWithInactiveAccount_ThrowsException() {
-        // Arrange
+    void updateSettings_EnableWithInactiveAccount_ThrowsConflict() {
         testBankAccount.setIsActive(false);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(walletRepository.findByUser(testUser)).thenReturn(Optional.of(testWallet));
-        when(simulatedBankAccountRepository.findById(1L)).thenReturn(Optional.of(testBankAccount));
 
-        // Act & Assert
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
-            autoReloadService.updateSettings(1L, true, 1L, 
-                new BigDecimal("1000.00"), new BigDecimal("2000.00"));
-        });
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(walletRepository.findByUser(testUser))
+                .thenReturn(Optional.of(testWallet));
+        when(simulatedBankAccountRepository.findById(1L))
+                .thenReturn(Optional.of(testBankAccount));
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> autoReloadService.updateSettings(
+                        1L,
+                        true,
+                        1L,
+                        new BigDecimal("1000.00"),
+                        new BigDecimal("2000.00")
+                )
+        );
 
         assertEquals(409, exception.getStatusCode().value());
         assertTrue(exception.getReason().contains("must be active"));
     }
 
     @Test
-    void updateSettings_EnableWithZeroThreshold_ThrowsException() {
-        // Arrange
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(walletRepository.findByUser(testUser)).thenReturn(Optional.of(testWallet));
+    void updateSettings_EnableWithZeroThreshold_ThrowsBadRequest() {
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(walletRepository.findByUser(testUser))
+                .thenReturn(Optional.of(testWallet));
 
-        // Act & Assert
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
-            autoReloadService.updateSettings(1L, true, 1L, 
-                BigDecimal.ZERO, new BigDecimal("2000.00"));
-        });
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> autoReloadService.updateSettings(
+                        1L,
+                        true,
+                        1L,
+                        BigDecimal.ZERO,
+                        new BigDecimal("2000.00")
+                )
+        );
 
         assertEquals(400, exception.getStatusCode().value());
-        assertTrue(exception.getReason().contains("thresholdAmount must be greater than 0"));
+        assertTrue(exception.getReason()
+                .contains("thresholdAmount must be greater than 0"));
     }
 
     @Test
-    void attemptReload_BalanceBelowThreshold_Success() {
-        // Arrange
-        when(walletRepository.findById(1L)).thenReturn(Optional.of(testWallet));
-        when(autoReloadSettingsRepository.findByWallet(testWallet)).thenReturn(Optional.of(testSettings));
-        when(jdbcTemplate.update(anyString(), anyLong())).thenReturn(1); // Lock acquired
-        when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(simulatedBankAccountRepository.save(any(SimulatedBankAccount.class))).thenReturn(testBankAccount);
-        when(simulatedAccountTransactionRepository.save(any(SimulatedAccountTransaction.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(walletRepository.save(any(Wallet.class))).thenReturn(testWallet);
-        when(ledgerEntryRepository.save(any(LedgerEntry.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        doNothing().when(notificationService).create(anyLong(), any(), anyString(), anyString(), any());
+    void updateSettings_EnableWithZeroReloadAmount_ThrowsBadRequest() {
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(walletRepository.findByUser(testUser))
+                .thenReturn(Optional.of(testWallet));
 
-        // Act
-        autoReloadService.attemptReload(1L, false);
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> autoReloadService.updateSettings(
+                        1L,
+                        true,
+                        1L,
+                        new BigDecimal("1000.00"),
+                        BigDecimal.ZERO
+                )
+        );
 
-        // Assert
-        verify(transactionRepository, times(1)).save(any(Transaction.class));
-        verify(walletRepository, times(1)).save(any(Wallet.class));
-        verify(ledgerEntryRepository, times(1)).save(any(LedgerEntry.class));
-        verify(jdbcTemplate, times(2)).update(anyString(), anyLong()); // Acquire + release lock
+        assertEquals(400, exception.getStatusCode().value());
+        assertTrue(exception.getReason()
+                .contains("reloadAmount must be greater than 0"));
     }
 
     @Test
-    void attemptReload_BalanceAboveThreshold_NoReload() {
-        // Arrange
-        testWallet.setBalance(new BigDecimal("2000.00")); // Above threshold
-        when(walletRepository.findById(1L)).thenReturn(Optional.of(testWallet));
-        when(autoReloadSettingsRepository.findByWallet(testWallet)).thenReturn(Optional.of(testSettings));
+    void updateSettings_EnableWithMissingAccount_ThrowsNotFound() {
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(walletRepository.findByUser(testUser))
+                .thenReturn(Optional.of(testWallet));
+        when(simulatedBankAccountRepository.findById(1L))
+                .thenReturn(Optional.empty());
 
-        // Act
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> autoReloadService.updateSettings(
+                        1L,
+                        true,
+                        1L,
+                        new BigDecimal("1000.00"),
+                        new BigDecimal("2000.00")
+                )
+        );
+
+        assertEquals(404, exception.getStatusCode().value());
+    }
+
+    @Test
+    void updateSettings_EnableWithAnotherUsersAccount_ThrowsForbidden() {
+        User anotherUser = new User();
+        anotherUser.setId(2L);
+        anotherUser.setEmail("another@example.com");
+
+        testBankAccount.setUser(anotherUser);
+
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(testUser));
+        when(walletRepository.findByUser(testUser))
+                .thenReturn(Optional.of(testWallet));
+        when(simulatedBankAccountRepository.findById(1L))
+                .thenReturn(Optional.of(testBankAccount));
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> autoReloadService.updateSettings(
+                        1L,
+                        true,
+                        1L,
+                        new BigDecimal("1000.00"),
+                        new BigDecimal("2000.00")
+                )
+        );
+
+        assertEquals(403, exception.getStatusCode().value());
+    }
+
+    @Test
+    void attemptReload_BalanceBelowThreshold_PerformsReload() {
+        when(walletRepository.findById(1L))
+                .thenReturn(Optional.of(testWallet));
+        when(autoReloadSettingsRepository.findByWallet(testWallet))
+                .thenReturn(Optional.of(testSettings));
+        when(jdbcTemplate.update(anyString(), anyLong()))
+                .thenReturn(1);
+        when(transactionRepository.save(any(Transaction.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(simulatedBankAccountRepository.save(any(SimulatedBankAccount.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(simulatedAccountTransactionRepository.save(
+                any(SimulatedAccountTransaction.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(walletRepository.save(any(Wallet.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(ledgerEntryRepository.save(any(LedgerEntry.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
         autoReloadService.attemptReload(1L, false);
 
-        // Assert
+        assertEquals(
+                0,
+                new BigDecimal("2500.00").compareTo(testWallet.getBalance())
+        );
+        assertEquals(
+                0,
+                new BigDecimal("3000.00")
+                        .compareTo(testBankAccount.getSimulatedBalance())
+        );
+
+        verify(transactionRepository).save(any(Transaction.class));
+        verify(walletRepository).save(any(Wallet.class));
+        verify(simulatedBankAccountRepository)
+                .save(any(SimulatedBankAccount.class));
+        verify(simulatedAccountTransactionRepository)
+                .save(any(SimulatedAccountTransaction.class));
+        verify(ledgerEntryRepository).save(any(LedgerEntry.class));
+
+        // One update acquires the lock; the other releases it.
+        verify(jdbcTemplate, times(2)).update(anyString(), anyLong());
+    }
+
+    @Test
+    void attemptReload_BalanceAtOrAboveThreshold_DoesNotReload() {
+        testWallet.setBalance(new BigDecimal("1000.00"));
+
+        when(walletRepository.findById(1L))
+                .thenReturn(Optional.of(testWallet));
+        when(autoReloadSettingsRepository.findByWallet(testWallet))
+                .thenReturn(Optional.of(testSettings));
+
+        autoReloadService.attemptReload(1L, false);
+
         verify(jdbcTemplate, never()).update(anyString(), anyLong());
         verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
     @Test
-    void attemptReload_SettingsDisabled_NoReload() {
-        // Arrange
+    void attemptReload_SettingsDisabled_DoesNotReload() {
         testSettings.setIsEnabled(false);
-        when(walletRepository.findById(1L)).thenReturn(Optional.of(testWallet));
-        when(autoReloadSettingsRepository.findByWallet(testWallet)).thenReturn(Optional.of(testSettings));
 
-        // Act
+        when(walletRepository.findById(1L))
+                .thenReturn(Optional.of(testWallet));
+        when(autoReloadSettingsRepository.findByWallet(testWallet))
+                .thenReturn(Optional.of(testSettings));
+
         autoReloadService.attemptReload(1L, false);
 
-        // Assert
         verify(jdbcTemplate, never()).update(anyString(), anyLong());
         verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
     @Test
-    void attemptReload_InactiveWallet_NoReload() {
-        // Arrange
+    void attemptReload_InactiveWallet_DoesNotReload() {
         testWallet.setStatus(Wallet.Status.INACTIVE);
-        when(walletRepository.findById(1L)).thenReturn(Optional.of(testWallet));
-        when(autoReloadSettingsRepository.findByWallet(testWallet)).thenReturn(Optional.of(testSettings));
 
-        // Act
+        when(walletRepository.findById(1L))
+                .thenReturn(Optional.of(testWallet));
+        when(autoReloadSettingsRepository.findByWallet(testWallet))
+                .thenReturn(Optional.of(testSettings));
+
         autoReloadService.attemptReload(1L, false);
 
-        // Assert
         verify(jdbcTemplate, never()).update(anyString(), anyLong());
         verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
     @Test
-    void attemptReload_SkipAutoReloadCheck_NoReload() {
-        // Arrange
-        when(walletRepository.findById(1L)).thenReturn(Optional.of(testWallet));
+    void attemptReload_SkipCheck_DoesNotLoadSettingsOrReload() {
+        when(walletRepository.findById(1L))
+                .thenReturn(Optional.of(testWallet));
 
-        // Act
-        autoReloadService.attemptReload(1L, true); // Skip check
+        autoReloadService.attemptReload(1L, true);
 
-        // Assert
         verify(autoReloadSettingsRepository, never()).findByWallet(any());
+        verify(jdbcTemplate, never()).update(anyString(), anyLong());
         verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
     @Test
-    void attemptReload_LockAlreadyAcquired_NoReload() {
-        // Arrange
-        when(walletRepository.findById(1L)).thenReturn(Optional.of(testWallet));
-        when(autoReloadSettingsRepository.findByWallet(testWallet)).thenReturn(Optional.of(testSettings));
-        when(jdbcTemplate.update(anyString(), anyLong())).thenReturn(0); // Lock not acquired
+    void attemptReload_LockAlreadyAcquired_DoesNotReloadAgain() {
+        when(walletRepository.findById(1L))
+                .thenReturn(Optional.of(testWallet));
+        when(autoReloadSettingsRepository.findByWallet(testWallet))
+                .thenReturn(Optional.of(testSettings));
+        when(jdbcTemplate.update(anyString(), anyLong()))
+                .thenReturn(0);
 
-        // Act
         autoReloadService.attemptReload(1L, false);
 
-        // Assert
         verify(transactionRepository, never()).save(any(Transaction.class));
-        verify(jdbcTemplate, times(1)).update(anyString(), anyLong()); // Only lock attempt
+        verify(walletRepository, never()).save(any(Wallet.class));
+        verify(jdbcTemplate, times(1)).update(anyString(), anyLong());
     }
 
     @Test
-    void attemptReload_InsufficientBankBalance_CreatesFailedTransaction() {
-        // Arrange
-        testBankAccount.setSimulatedBalance(new BigDecimal("500.00")); // Insufficient
-        when(walletRepository.findById(1L)).thenReturn(Optional.of(testWallet));
-        when(autoReloadSettingsRepository.findByWallet(testWallet)).thenReturn(Optional.of(testSettings));
-        when(jdbcTemplate.update(anyString(), anyLong())).thenReturn(1); // Lock acquired
-        when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(simulatedAccountTransactionRepository.save(any(SimulatedAccountTransaction.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        doNothing().when(notificationService).create(anyLong(), any(), anyString(), anyString(), any());
+    void attemptReload_InsufficientBankBalance_RecordsFailedReload() {
+        testBankAccount.setSimulatedBalance(new BigDecimal("500.00"));
 
-        // Act
+        when(walletRepository.findById(1L))
+                .thenReturn(Optional.of(testWallet));
+        when(autoReloadSettingsRepository.findByWallet(testWallet))
+                .thenReturn(Optional.of(testSettings));
+        when(jdbcTemplate.update(anyString(), anyLong()))
+                .thenReturn(1);
+        when(transactionRepository.save(any(Transaction.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(simulatedAccountTransactionRepository.save(
+                any(SimulatedAccountTransaction.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
         autoReloadService.attemptReload(1L, false);
 
-        // Assert
-        verify(transactionRepository, times(1)).save(any(Transaction.class));
-        verify(walletRepository, never()).save(any(Wallet.class)); // Wallet not updated on failure
-        verify(jdbcTemplate, times(2)).update(anyString(), anyLong()); // Acquire + release lock
+        // A failed reload is recorded, but wallet funds must not change.
+        assertEquals(
+                0,
+                new BigDecimal("500.00").compareTo(testWallet.getBalance())
+        );
+
+        verify(transactionRepository).save(any(Transaction.class));
+        verify(walletRepository, never()).save(any(Wallet.class));
+        verify(ledgerEntryRepository, never()).save(any(LedgerEntry.class));
+        verify(jdbcTemplate, times(2)).update(anyString(), anyLong());
     }
 }

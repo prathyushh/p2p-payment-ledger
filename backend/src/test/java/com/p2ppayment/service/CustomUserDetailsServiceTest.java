@@ -1,20 +1,21 @@
 package com.p2ppayment.service;
 
-import com.p2ppayment.model.User;
+import com.p2ppayment.entity.User;
 import com.p2ppayment.repository.UserRepository;
+import com.p2ppayment.security.CustomUserDetails;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -30,66 +31,106 @@ class CustomUserDetailsServiceTest {
 
     @BeforeEach
     void setUp() {
-        testUser = new User();
-        testUser.setId(1L);
-        testUser.setEmail("test@example.com");
-        testUser.setPassword("hashedPassword");
-        testUser.setEnabled(true);
-        testUser.setAccountLocked(false);
-        testUser.setRole(User.Role.USER);
+        testUser = User.builder()
+                .id(1L)
+                .name("Test User")
+                .email("test@example.com")
+                .phoneNumber("9876543210")
+                .password("hashedPassword")
+                .transactionPin("hashedPin")
+                .role(User.Role.USER)
+                .enabled(true)
+                .accountLocked(false)
+                .build();
     }
 
     @Test
     void loadUserByUsername_Success() {
-        // Arrange
-        when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(testUser));
+        when(userRepository.findByEmail("test@example.com"))
+                .thenReturn(Optional.of(testUser));
 
-        // Act
-        UserDetails result = customUserDetailsService.loadUserByUsername("test@example.com");
+        UserDetails result =
+                customUserDetailsService.loadUserByUsername("test@example.com");
 
-        // Assert
         assertNotNull(result);
-        assertEquals("1", result.getUsername()); // User ID as string
+        assertInstanceOf(CustomUserDetails.class, result);
+        assertEquals("test@example.com", result.getUsername());
+        assertEquals("hashedPassword", result.getPassword());
         assertTrue(result.isEnabled());
         assertTrue(result.isAccountNonLocked());
+        assertTrue(result.isAccountNonExpired());
+        assertTrue(result.isCredentialsNonExpired());
+        assertTrue(result.getAuthorities().contains(
+                new SimpleGrantedAuthority("ROLE_USER")));
+
+        verify(userRepository, times(1))
+                .findByEmail("test@example.com");
     }
 
     @Test
     void loadUserByUsername_UserNotFound_ThrowsException() {
-        // Arrange
-        when(userRepository.findByEmail(anyString())).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("missing@example.com"))
+                .thenReturn(Optional.empty());
 
-        // Act & Assert
-        assertThrows(UsernameNotFoundException.class, () -> {
-            customUserDetailsService.loadUserByUsername("nonexistent@example.com");
-        });
+        UsernameNotFoundException exception = assertThrows(
+                UsernameNotFoundException.class,
+                () -> customUserDetailsService.loadUserByUsername(
+                        "missing@example.com")
+        );
+
+        assertTrue(exception.getMessage().contains(
+                "User not found with email: missing@example.com"));
+
+        verify(userRepository, times(1))
+                .findByEmail("missing@example.com");
     }
 
     @Test
-    void loadUserByUsername_DisabledUser_ReturnsFalse() {
-        // Arrange
+    void loadUserByUsername_AdminUser_ReturnsAdminAuthority() {
+        testUser.setRole(User.Role.ADMIN);
+
+        when(userRepository.findByEmail("test@example.com"))
+                .thenReturn(Optional.of(testUser));
+
+        UserDetails result =
+                customUserDetailsService.loadUserByUsername("test@example.com");
+
+        assertNotNull(result);
+        assertTrue(result.getAuthorities().contains(
+                new SimpleGrantedAuthority("ROLE_ADMIN")));
+    }
+
+    @Test
+    void loadUserByUsername_DisabledUser_UserDetailsStillEnabled() {
         testUser.setEnabled(false);
-        when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(testUser));
 
-        // Act
-        UserDetails result = customUserDetailsService.loadUserByUsername("test@example.com");
+        when(userRepository.findByEmail("test@example.com"))
+                .thenReturn(Optional.of(testUser));
 
-        // Assert
+        UserDetails result =
+                customUserDetailsService.loadUserByUsername("test@example.com");
+
         assertNotNull(result);
-        assertFalse(result.isEnabled());
+        assertTrue(result.isEnabled());
+
+        CustomUserDetails customDetails = (CustomUserDetails) result;
+        assertFalse(customDetails.isUserEnabled());
     }
 
     @Test
-    void loadUserByUsername_LockedUser_ReturnsFalse() {
-        // Arrange
+    void loadUserByUsername_LockedUser_UserDetailsStillNonLocked() {
         testUser.setAccountLocked(true);
-        when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(testUser));
 
-        // Act
-        UserDetails result = customUserDetailsService.loadUserByUsername("test@example.com");
+        when(userRepository.findByEmail("test@example.com"))
+                .thenReturn(Optional.of(testUser));
 
-        // Assert
+        UserDetails result =
+                customUserDetailsService.loadUserByUsername("test@example.com");
+
         assertNotNull(result);
-        assertFalse(result.isAccountNonLocked());
+        assertTrue(result.isAccountNonLocked());
+
+        CustomUserDetails customDetails = (CustomUserDetails) result;
+        assertTrue(customDetails.isUserAccountLocked());
     }
 }

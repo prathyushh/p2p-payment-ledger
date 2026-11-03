@@ -1,23 +1,29 @@
 package com.p2ppayment.service;
 
-import com.p2ppayment.model.*;
-import com.p2ppayment.repository.*;
+import com.p2ppayment.entity.LedgerEntry;
+import com.p2ppayment.entity.Notification;
+import com.p2ppayment.entity.Transaction;
+import com.p2ppayment.entity.User;
+import com.p2ppayment.entity.Wallet;
+import com.p2ppayment.repository.LedgerEntryRepository;
+import com.p2ppayment.repository.TransactionRepository;
+import com.p2ppayment.repository.UserRepository;
+import com.p2ppayment.repository.WalletRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -68,6 +74,7 @@ class SettlementServiceTest {
         receiverWallet.setId(2L);
         receiverWallet.setUser(receiver);
         receiverWallet.setBalance(new BigDecimal("2000.00"));
+        receiverWallet.setDailySpent(BigDecimal.ZERO);
         receiverWallet.setStatus(Wallet.Status.ACTIVE);
 
         testTransaction = new Transaction();
@@ -80,86 +87,185 @@ class SettlementServiceTest {
         testTransaction.setSettlementDueDate(LocalDate.now());
     }
 
+    private void mockSuccessfulSaves() {
+        when(walletRepository.save(any(Wallet.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(ledgerEntryRepository.save(any(LedgerEntry.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(transactionRepository.save(any(Transaction.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(notificationService.create(
+                anyLong(),
+                any(Notification.Type.class),
+                anyString(),
+                anyString(),
+                any(Transaction.class)
+        )).thenReturn(new Notification());
+    }
+
     @Test
-    void getPendingTransactionsDue_Success() {
-        // Arrange
+    void getPendingTransactionsDue_ReturnsTransactions() {
         when(transactionRepository.findDueTransactions(any(LocalDate.class)))
-            .thenReturn(Arrays.asList(testTransaction));
+                .thenReturn(List.of(testTransaction));
 
-        // Act
-        List<Transaction> result = settlementService.getPendingTransactionsDue();
+        List<Transaction> result =
+                settlementService.getPendingTransactionsDue();
 
-        // Assert
         assertNotNull(result);
         assertEquals(1, result.size());
-        assertEquals(testTransaction.getId(), result.get(0).getId());
+        assertEquals(1L, result.get(0).getId());
+
+        verify(transactionRepository).findDueTransactions(any(LocalDate.class));
     }
 
     @Test
-    void settleTransaction_Success() throws Exception {
-        // Arrange
-        when(transactionRepository.findById(1L)).thenReturn(Optional.of(testTransaction));
-        when(walletRepository.save(any(Wallet.class))).thenReturn(receiverWallet);
-        when(ledgerEntryRepository.save(any(LedgerEntry.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(transactionRepository.save(any(Transaction.class))).thenReturn(testTransaction);
-        doNothing().when(notificationService).create(anyLong(), any(), anyString(), anyString(), any());
+    void getPendingTransactionsDue_NoTransactions_ReturnsEmptyList() {
+        when(transactionRepository.findDueTransactions(any(LocalDate.class)))
+                .thenReturn(List.of());
 
-        // Act
+        List<Transaction> result =
+                settlementService.getPendingTransactionsDue();
+
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void settleTransaction_Success_CreditsReceiver() throws Exception {
+        when(transactionRepository.findById(1L))
+                .thenReturn(Optional.of(testTransaction));
+
+        mockSuccessfulSaves();
+
         settlementService.settleTransaction(testTransaction);
 
-        // Assert
-        verify(walletRepository, times(1)).save(any(Wallet.class));
-        verify(ledgerEntryRepository, times(1)).save(any(LedgerEntry.class));
-        verify(transactionRepository, times(1)).save(any(Transaction.class));
+        assertEquals(
+                0,
+                new BigDecimal("3000.00")
+                        .compareTo(receiverWallet.getBalance())
+        );
+        assertEquals(Transaction.Status.SUCCESS, testTransaction.getStatus());
+        assertNotNull(testTransaction.getSettledAt());
+
+        verify(walletRepository).save(receiverWallet);
+        verify(ledgerEntryRepository).save(argThat(entry ->
+                entry.getType() == LedgerEntry.Type.CREDIT
+                        && entry.getWallet().getId().equals(2L)
+                        && entry.getAmount().compareTo(
+                                new BigDecimal("1000.00")) == 0
+                        && entry.getBalanceBefore().compareTo(
+                                new BigDecimal("2000.00")) == 0
+                        && entry.getBalanceAfter().compareTo(
+                                new BigDecimal("3000.00")) == 0
+        ));
+        verify(transactionRepository).save(testTransaction);
     }
 
     @Test
-    void settleTransaction_AlreadySettled_NoAction() throws Exception {
-        // Arrange
+    void settleTransaction_AlreadySettled_DoesNotChangeWallets()
+            throws Exception {
         testTransaction.setStatus(Transaction.Status.SUCCESS);
-        when(transactionRepository.findById(1L)).thenReturn(Optional.of(testTransaction));
 
-        // Act
-        settlementService.settleTransaction(testTransaction);
+        when(transactionRepository.findById(1L))
+                .thenReturn(Optional.of(testTransaction));
 
-        // Assert
+        settleTransactionWithoutChanges();
+
         verify(walletRepository, never()).save(any(Wallet.class));
+        verify(ledgerEntryRepository, never()).save(any(LedgerEntry.class));
+        verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
     @Test
-    void settleTransaction_ReceiverWalletFrozen_DeclinedSettlement() throws Exception {
-        // Arrange
+    void settleTransaction_FrozenReceiver_DeclinesAndRefundsSender()
+            throws Exception {
         receiverWallet.setStatus(Wallet.Status.FROZEN);
-        when(transactionRepository.findById(1L)).thenReturn(Optional.of(testTransaction));
-        when(walletRepository.save(any(Wallet.class))).thenReturn(senderWallet);
-        when(ledgerEntryRepository.save(any(LedgerEntry.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(transactionRepository.save(any(Transaction.class))).thenReturn(testTransaction);
-        doNothing().when(notificationService).create(anyLong(), any(), anyString(), anyString(), any());
 
-        // Act
+        when(transactionRepository.findById(1L))
+                .thenReturn(Optional.of(testTransaction));
+
+        mockSuccessfulSaves();
+
         settlementService.settleTransaction(testTransaction);
 
-        // Assert
-        verify(walletRepository, times(1)).save(any(Wallet.class)); // Refund to sender
-        verify(ledgerEntryRepository, times(1)).save(any(LedgerEntry.class));
-        verify(transactionRepository, times(1)).save(any(Transaction.class));
+        assertEquals(Transaction.Status.DECLINED, testTransaction.getStatus());
+        assertEquals(
+                0,
+                new BigDecimal("6000.00")
+                        .compareTo(senderWallet.getBalance())
+        );
+        assertEquals(
+                0,
+                new BigDecimal("0.00")
+                        .compareTo(senderWallet.getDailySpent())
+        );
+
+        verify(walletRepository).save(senderWallet);
+        verify(ledgerEntryRepository).save(argThat(entry ->
+                entry.getType() == LedgerEntry.Type.CREDIT
+                        && entry.getWallet().getId().equals(1L)
+                        && entry.getBalanceBefore().compareTo(
+                                new BigDecimal("5000.00")) == 0
+                        && entry.getBalanceAfter().compareTo(
+                                new BigDecimal("6000.00")) == 0
+        ));
+        verify(transactionRepository).save(testTransaction);
     }
 
     @Test
-    void settleTransaction_ReceiverWalletInactive_DeclinedSettlement() throws Exception {
-        // Arrange
+    void settleTransaction_InactiveReceiver_DeclinesAndRefundsSender()
+            throws Exception {
         receiverWallet.setStatus(Wallet.Status.INACTIVE);
-        when(transactionRepository.findById(1L)).thenReturn(Optional.of(testTransaction));
-        when(walletRepository.save(any(Wallet.class))).thenReturn(senderWallet);
-        when(ledgerEntryRepository.save(any(LedgerEntry.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(transactionRepository.save(any(Transaction.class))).thenReturn(testTransaction);
-        doNothing().when(notificationService).create(anyLong(), any(), anyString(), anyString(), any());
 
-        // Act
+        when(transactionRepository.findById(1L))
+                .thenReturn(Optional.of(testTransaction));
+
+        mockSuccessfulSaves();
+
         settlementService.settleTransaction(testTransaction);
 
-        // Assert
-        verify(walletRepository, times(1)).save(any(Wallet.class)); // Refund to sender
         assertEquals(Transaction.Status.DECLINED, testTransaction.getStatus());
+        assertEquals(
+                0,
+                new BigDecimal("6000.00")
+                        .compareTo(senderWallet.getBalance())
+        );
+
+        verify(walletRepository).save(senderWallet);
+        verify(ledgerEntryRepository).save(any(LedgerEntry.class));
+    }
+
+    @Test
+    void settleTransaction_TransactionNotFound_ThrowsException() {
+        when(transactionRepository.findById(1L))
+                .thenReturn(Optional.empty());
+
+        assertThrows(
+                Exception.class,
+                () -> settlementService.settleTransaction(testTransaction)
+        );
+
+        verify(walletRepository, never()).save(any(Wallet.class));
+        verify(ledgerEntryRepository, never()).save(any(LedgerEntry.class));
+    }
+
+    @Test
+    void settleTransaction_NullReceiverWallet_ThrowsException() {
+        testTransaction.setReceiverWallet(null);
+
+        when(transactionRepository.findById(1L))
+                .thenReturn(Optional.of(testTransaction));
+
+        assertThrows(
+                Exception.class,
+                () -> settlementService.settleTransaction(testTransaction)
+        );
+    }
+
+    private void settleTransactionWithoutChanges() throws Exception {
+        settlementService.settleTransaction(testTransaction);
     }
 }

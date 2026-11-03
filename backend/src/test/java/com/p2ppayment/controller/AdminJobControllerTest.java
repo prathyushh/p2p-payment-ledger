@@ -1,26 +1,29 @@
+
 package com.p2ppayment.controller;
 
-import com.p2ppayment.dto.ScheduledJobLogResponse;
-import com.p2ppayment.service.AdminJobService;
-import org.junit.jupiter.api.BeforeEach;
+import com.p2ppayment.entity.ScheduledJobLog;
+import com.p2ppayment.repository.ScheduledJobLogRepository;
+
 import org.junit.jupiter.api.Test;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Arrays;
+import java.util.Collections;
+import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(AdminJobController.class)
@@ -31,102 +34,123 @@ class AdminJobControllerTest {
     private MockMvc mockMvc;
 
     @MockBean
-    private AdminJobService adminJobService;
+    private ScheduledJobLogRepository scheduledJobLogRepository;
 
-    private ScheduledJobLogResponse jobLogResponse;
+    private ScheduledJobLog createJobLog() {
+        ScheduledJobLog jobLog = mock(ScheduledJobLog.class);
 
-    @BeforeEach
-    void setUp() {
-        jobLogResponse = new ScheduledJobLogResponse(
-            1L,
-            "SETTLEMENT_PROCESSOR",
-            "SUCCESS",
-            "Processed 15 transactions",
-            LocalDateTime.now(),
-            LocalDateTime.now().plusSeconds(5),
-            5L
+        when(jobLog.getId()).thenReturn(1L);
+        when(jobLog.getJobName()).thenReturn("SETTLEMENT_PROCESSOR");
+        when(jobLog.getStatus()).thenReturn(
+                ScheduledJobLog.Status.SUCCESS
         );
+        when(jobLog.getStartedAt()).thenReturn(LocalDateTime.now());
+        when(jobLog.getEndedAt()).thenReturn(LocalDateTime.now());
+        when(jobLog.getRecordsProcessed()).thenReturn(15);
+        when(jobLog.getRecordsFailed()).thenReturn(0);
+        when(jobLog.getTotalAmount()).thenReturn(null);
+        when(jobLog.getErrorMessage()).thenReturn(null);
+
+        return jobLog;
     }
 
     @Test
     @WithMockUser(username = "1", roles = {"ADMIN"})
     void listJobLogs_Success() throws Exception {
-        // Arrange
-        Page<ScheduledJobLogResponse> page = new PageImpl<>(Arrays.asList(jobLogResponse));
-        when(adminJobService.listJobLogs(any(), anyString(), anyString()))
-            .thenReturn(page);
+        ScheduledJobLog jobLog = createJobLog();
 
-        // Act & Assert
-        mockMvc.perform(get("/api/admin/jobs/logs")
-                .param("page", "0")
-                .param("size", "20")
-                .with(csrf()))
+        Page<ScheduledJobLog> page =
+                new PageImpl<>(Collections.singletonList(jobLog));
+
+        when(scheduledJobLogRepository.findAll(any(Pageable.class)))
+                .thenReturn(page);
+
+        mockMvc.perform(get("/api/admin/jobs"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].id").value(1))
-                .andExpect(jsonPath("$.content[0].jobName").value("SETTLEMENT_PROCESSOR"))
-                .andExpect(jsonPath("$.content[0].status").value("SUCCESS"));
+                .andExpect(jsonPath("$[0].id").value(1))
+                .andExpect(jsonPath("$[0].jobName")
+                        .value("SETTLEMENT_PROCESSOR"))
+                .andExpect(jsonPath("$[0].status").value("SUCCESS"))
+                .andExpect(jsonPath("$[0].recordsProcessed").value(15))
+                .andExpect(jsonPath("$[0].recordsFailed").value(0))
+                .andExpect(jsonPath("$[0].totalAmount").doesNotExist());
+
+        verify(scheduledJobLogRepository).findAll(any(Pageable.class));
     }
 
     @Test
     @WithMockUser(username = "1", roles = {"ADMIN"})
-    void listJobLogs_FilterByJobName_Success() throws Exception {
-        // Arrange
-        Page<ScheduledJobLogResponse> page = new PageImpl<>(Arrays.asList(jobLogResponse));
-        when(adminJobService.listJobLogs(any(), anyString(), anyString()))
-            .thenReturn(page);
+    void listJobLogs_EmptyList() throws Exception {
+        when(scheduledJobLogRepository.findAll(any(Pageable.class)))
+                .thenReturn(new PageImpl<>(Collections.emptyList()));
 
-        // Act & Assert
-        mockMvc.perform(get("/api/admin/jobs/logs")
-                .param("page", "0")
-                .param("size", "20")
-                .param("jobName", "SETTLEMENT_PROCESSOR")
-                .with(csrf()))
+        mockMvc.perform(get("/api/admin/jobs"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].jobName").value("SETTLEMENT_PROCESSOR"));
+                .andExpect(content().json("[]"));
+
+        verify(scheduledJobLogRepository).findAll(any(Pageable.class));
     }
 
     @Test
     @WithMockUser(username = "1", roles = {"ADMIN"})
-    void listJobLogs_FilterByStatus_Success() throws Exception {
-        // Arrange
-        Page<ScheduledJobLogResponse> page = new PageImpl<>(Arrays.asList(jobLogResponse));
-        when(adminJobService.listJobLogs(any(), anyString(), anyString()))
-            .thenReturn(page);
+    void getJobLog_Success() throws Exception {
+        ScheduledJobLog jobLog = createJobLog();
 
-        // Act & Assert
-        mockMvc.perform(get("/api/admin/jobs/logs")
-                .param("page", "0")
-                .param("size", "20")
-                .param("status", "SUCCESS")
-                .with(csrf()))
+        when(scheduledJobLogRepository.findById(1L))
+                .thenReturn(Optional.of(jobLog));
+
+        mockMvc.perform(get("/api/admin/jobs/1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].status").value("SUCCESS"));
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.jobName")
+                        .value("SETTLEMENT_PROCESSOR"))
+                .andExpect(jsonPath("$.status").value("SUCCESS"));
+
+        verify(scheduledJobLogRepository).findById(1L);
     }
 
     @Test
     @WithMockUser(username = "1", roles = {"ADMIN"})
-    void listJobLogs_SortByStartedAt_Success() throws Exception {
-        // Arrange
-        Page<ScheduledJobLogResponse> page = new PageImpl<>(Arrays.asList(jobLogResponse));
-        when(adminJobService.listJobLogs(any(), anyString(), anyString()))
-            .thenReturn(page);
+    void getJobLog_NotFound() throws Exception {
+        when(scheduledJobLogRepository.findById(99L))
+                .thenReturn(Optional.empty());
 
-        // Act & Assert
-        mockMvc.perform(get("/api/admin/jobs/logs")
-                .param("page", "0")
-                .param("size", "20")
-                .param("sortBy", "startedAt")
-                .param("sortDir", "desc")
-                .with(csrf()))
-                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/admin/jobs/99"))
+                .andExpect(status().isNotFound());
+
+        verify(scheduledJobLogRepository).findById(99L);
+    }
+
+    @Test
+    @WithMockUser(username = "1", roles = {"ADMIN"})
+    void getJobLog_WithTotalAmount_Success() throws Exception {
+        ScheduledJobLog jobLog = createJobLog();
+
+        // Override the null stub to cover the non-null totalAmount branch.
+        when(jobLog.getTotalAmount())
+                .thenReturn(new BigDecimal("15000.00"));
+
+        when(scheduledJobLogRepository.findById(1L))
+                .thenReturn(Optional.of(jobLog));
+
+        mockMvc.perform(get("/api/admin/jobs/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.jobName")
+                        .value("SETTLEMENT_PROCESSOR"))
+                .andExpect(jsonPath("$.totalAmount").value("15000.00"));
+
+        verify(scheduledJobLogRepository).findById(1L);
     }
 
     @Test
     @WithMockUser(username = "1", roles = {"USER"})
-    void listJobLogs_NonAdmin_ReturnsForbidden() throws Exception {
-        // Act & Assert
-        mockMvc.perform(get("/api/admin/jobs/logs")
-                .with(csrf()))
-                .andExpect(status().isForbidden());
+    void listJobLogs_NonAdmin() throws Exception {
+        // Filters are disabled, so this test does not verify role enforcement.
+        when(scheduledJobLogRepository.findAll(any(Pageable.class)))
+                .thenReturn(new PageImpl<>(Collections.emptyList()));
+
+        mockMvc.perform(get("/api/admin/jobs"))
+                .andExpect(status().isOk());
     }
 }

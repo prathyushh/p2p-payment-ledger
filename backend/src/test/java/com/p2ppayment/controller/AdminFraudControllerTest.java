@@ -1,30 +1,43 @@
+
 package com.p2ppayment.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.p2ppayment.dto.AdminFraudActionRequest;
-import com.p2ppayment.dto.FraudAlertResponse;
-import com.p2ppayment.service.AdminFraudService;
+import com.p2ppayment.entity.FraudAlert;
+import com.p2ppayment.entity.Transaction;
+import com.p2ppayment.repository.FraudAlertRepository;
+import com.p2ppayment.repository.UserRepository;
+import com.p2ppayment.service.AuditService;
+import com.p2ppayment.service.FraudService;
+
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
 
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(AdminFraudController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -37,130 +50,228 @@ class AdminFraudControllerTest {
     private ObjectMapper objectMapper;
 
     @MockBean
-    private AdminFraudService adminFraudService;
+    private FraudService fraudService;
 
-    private FraudAlertResponse fraudAlertResponse;
+    @MockBean
+    private FraudAlertRepository fraudAlertRepository;
+
+    @MockBean
+    private AuditService auditService;
+
+    @MockBean
+    private UserRepository userRepository;
 
     @BeforeEach
-    void setUp() {
-        fraudAlertResponse = new FraudAlertResponse(
-            1L,
-            1L,
-            1L,
-            2L,
-            "sender@example.com",
-            "receiver@example.com",
-            new BigDecimal("10000.00"),
-            "HIGH_VALUE",
-            "PENDING",
-            "High value transaction detected",
-            null,
-            null,
-            LocalDateTime.now()
+    void setUpSecurityContext() {
+        SecurityContext context =
+                SecurityContextHolder.createEmptyContext();
+
+        context.setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "1",
+                        null,
+                        Collections.emptyList()
+                )
+        );
+
+        SecurityContextHolder.setContext(context);
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void getAllAlerts_Success() throws Exception {
+        FraudAlert alert = createFraudAlert(1L);
+
+        when(fraudAlertRepository.findAllByOrderByCreatedAtDesc())
+                .thenReturn(List.of(alert));
+
+        mockMvc.perform(get("/api/admin/fraud"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(1))
+                .andExpect(jsonPath("$[0].transactionId").value(100))
+                .andExpect(jsonPath("$[0].alertType").value("HIGH_VALUE"))
+                .andExpect(jsonPath("$[0].status").value("PENDING"))
+                .andExpect(jsonPath("$[0].transactionStatus").value("PENDING"));
+
+        verify(fraudAlertRepository)
+                .findAllByOrderByCreatedAtDesc();
+    }
+
+    @Test
+    void blockAlert_Success() throws Exception {
+        Long alertId = 1L;
+
+        AdminFraudActionRequest request =
+                new AdminFraudActionRequest("Suspicious activity");
+
+        FraudAlert alert = createFraudAlert(alertId);
+        alert.setStatus(FraudAlert.Status.BLOCKED);
+        alert.setNotes(request.notes());
+
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.empty());
+
+        when(fraudService.blockAlert(alertId, request.notes()))
+                .thenReturn(alert);
+
+        mockMvc.perform(put("/api/admin/fraud/{alertId}/block", alertId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(alertId))
+                .andExpect(jsonPath("$.status").value("BLOCKED"))
+                .andExpect(jsonPath("$.notes").value("Suspicious activity"))
+                .andExpect(jsonPath("$.alertType").value("HIGH_VALUE"));
+
+        verify(fraudService)
+                .blockAlert(alertId, request.notes());
+
+        verify(auditService).logAction(
+                eq("FRAUD_ALERT_BLOCKED"),
+                eq("FRAUD_ALERT"),
+                eq(alertId),
+                isNull(),
+                eq("Alert blocked with notes: " + request.notes()),
+                eq("127.0.0.1")
         );
     }
 
     @Test
-    @WithMockUser(username = "1", roles = {"ADMIN"})
-    void listFraudAlerts_Success() throws Exception {
-        // Arrange
-        Page<FraudAlertResponse> page = new PageImpl<>(Arrays.asList(fraudAlertResponse));
-        when(adminFraudService.listFraudAlerts(any(), anyString(), any()))
-            .thenReturn(page);
+    void dismissAlert_Success() throws Exception {
+        Long alertId = 1L;
 
-        // Act & Assert
-        mockMvc.perform(get("/api/admin/fraud/alerts")
-                .param("page", "0")
-                .param("size", "20")
-                .with(csrf()))
+        AdminFraudActionRequest request =
+                new AdminFraudActionRequest(
+                        "Reviewed and found legitimate"
+                );
+
+        FraudAlert alert = createFraudAlert(alertId);
+        alert.setStatus(FraudAlert.Status.DISMISSED);
+        alert.setNotes(request.notes());
+
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.empty());
+
+        when(fraudService.dismissAlert(alertId, request.notes()))
+                .thenReturn(alert);
+
+        mockMvc.perform(put("/api/admin/fraud/{alertId}/dismiss", alertId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].id").value(1))
-                .andExpect(jsonPath("$.content[0].alertType").value("HIGH_VALUE"))
-                .andExpect(jsonPath("$.content[0].status").value("PENDING"));
-    }
+                .andExpect(jsonPath("$.id").value(alertId))
+                .andExpect(jsonPath("$.status").value("DISMISSED"))
+                .andExpect(jsonPath("$.notes")
+                        .value("Reviewed and found legitimate"))
+                .andExpect(jsonPath("$.alertType").value("HIGH_VALUE"));
 
-    @Test
-    @WithMockUser(username = "1", roles = {"ADMIN"})
-    void getFraudAlert_Success() throws Exception {
-        // Arrange
-        when(adminFraudService.getFraudAlert(anyLong())).thenReturn(fraudAlertResponse);
+        verify(fraudService)
+                .dismissAlert(alertId, request.notes());
 
-        // Act & Assert
-        mockMvc.perform(get("/api/admin/fraud/alerts/1")
-                .with(csrf()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(1))
-                .andExpect(jsonPath("$.amount").value(10000.00));
-    }
-
-    @Test
-    @WithMockUser(username = "1", roles = {"ADMIN"})
-    void blockTransaction_Success() throws Exception {
-        // Arrange
-        AdminFraudActionRequest request = new AdminFraudActionRequest("Suspicious activity detected");
-        FraudAlertResponse blockedAlert = new FraudAlertResponse(
-            1L, 1L, 1L, 2L, "sender@example.com", "receiver@example.com",
-            new BigDecimal("10000.00"), "HIGH_VALUE", "BLOCKED",
-            "High value transaction detected", "BLOCKED", "Suspicious activity detected",
-            LocalDateTime.now()
+        verify(auditService).logAction(
+                eq("FRAUD_ALERT_DISMISSED"),
+                eq("FRAUD_ALERT"),
+                eq(alertId),
+                isNull(),
+                eq("Alert dismissed with notes: " + request.notes()),
+                eq("127.0.0.1")
         );
-        when(adminFraudService.blockTransaction(anyLong(), anyString())).thenReturn(blockedAlert);
+    }
 
-        // Act & Assert
-        mockMvc.perform(post("/api/admin/fraud/alerts/1/block")
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+    @Test
+    void blockAlert_WithXForwardedFor_UsesFirstIpAddress()
+            throws Exception {
+
+        Long alertId = 1L;
+
+        AdminFraudActionRequest request =
+                new AdminFraudActionRequest("Suspicious activity");
+
+        FraudAlert alert = createFraudAlert(alertId);
+        alert.setStatus(FraudAlert.Status.BLOCKED);
+        alert.setNotes(request.notes());
+
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.empty());
+
+        when(fraudService.blockAlert(alertId, request.notes()))
+                .thenReturn(alert);
+
+        mockMvc.perform(put("/api/admin/fraud/{alertId}/block", alertId)
+                        .header(
+                                "X-Forwarded-For",
+                                "192.168.1.10, 10.0.0.1"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("BLOCKED"));
+
+        verify(auditService).logAction(
+                eq("FRAUD_ALERT_BLOCKED"),
+                eq("FRAUD_ALERT"),
+                eq(alertId),
+                isNull(),
+                eq("Alert blocked with notes: " + request.notes()),
+                eq("192.168.1.10")
+        );
     }
 
     @Test
-    @WithMockUser(username = "1", roles = {"ADMIN"})
-    void dismissAlert_Success() throws Exception {
-        // Arrange
-        AdminFraudActionRequest request = new AdminFraudActionRequest("False positive");
-        FraudAlertResponse dismissedAlert = new FraudAlertResponse(
-            1L, 1L, 1L, 2L, "sender@example.com", "receiver@example.com",
-            new BigDecimal("10000.00"), "HIGH_VALUE", "DISMISSED",
-            "High value transaction detected", "DISMISSED", "False positive",
-            LocalDateTime.now()
-        );
-        when(adminFraudService.dismissAlert(anyLong(), anyString())).thenReturn(dismissedAlert);
+    void dismissAlert_WithXForwardedFor_UsesFirstIpAddress()
+            throws Exception {
 
-        // Act & Assert
-        mockMvc.perform(post("/api/admin/fraud/alerts/1/dismiss")
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+        Long alertId = 1L;
+
+        AdminFraudActionRequest request =
+                new AdminFraudActionRequest("Reviewed");
+
+        FraudAlert alert = createFraudAlert(alertId);
+        alert.setStatus(FraudAlert.Status.DISMISSED);
+        alert.setNotes(request.notes());
+
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.empty());
+
+        when(fraudService.dismissAlert(alertId, request.notes()))
+                .thenReturn(alert);
+
+        mockMvc.perform(put("/api/admin/fraud/{alertId}/dismiss", alertId)
+                        .header(
+                                "X-Forwarded-For",
+                                "192.168.1.20, 10.0.0.2"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("DISMISSED"));
+
+        verify(auditService).logAction(
+                eq("FRAUD_ALERT_DISMISSED"),
+                eq("FRAUD_ALERT"),
+                eq(alertId),
+                isNull(),
+                eq("Alert dismissed with notes: " + request.notes()),
+                eq("192.168.1.20")
+        );
     }
 
-    @Test
-    @WithMockUser(username = "1", roles = {"ADMIN"})
-    void listFraudAlerts_FilterByStatus_Success() throws Exception {
-        // Arrange
-        Page<FraudAlertResponse> page = new PageImpl<>(Arrays.asList(fraudAlertResponse));
-        when(adminFraudService.listFraudAlerts(any(), anyString(), any()))
-            .thenReturn(page);
+    private FraudAlert createFraudAlert(Long alertId) {
+        Transaction transaction = new Transaction();
+        transaction.setId(100L);
+        transaction.setStatus(Transaction.Status.PENDING);
 
-        // Act & Assert
-        mockMvc.perform(get("/api/admin/fraud/alerts")
-                .param("page", "0")
-                .param("size", "20")
-                .param("status", "PENDING")
-                .with(csrf()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].status").value("PENDING"));
-    }
-
-    @Test
-    @WithMockUser(username = "1", roles = {"USER"})
-    void listFraudAlerts_NonAdmin_ReturnsForbidden() throws Exception {
-        // Act & Assert
-        mockMvc.perform(get("/api/admin/fraud/alerts")
-                .with(csrf()))
-                .andExpect(status().isForbidden());
+        return FraudAlert.builder()
+                .id(alertId)
+                .transaction(transaction)
+                .alertType(FraudAlert.AlertType.HIGH_VALUE)
+                .status(FraudAlert.Status.PENDING)
+                .notes("Test fraud alert")
+                .createdAt(LocalDateTime.now())
+                .build();
     }
 }

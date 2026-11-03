@@ -112,14 +112,18 @@ public class TransactionService {
         BigDecimal todaySent = senderWallet.getDailySpent();
         BigDecimal totalAfterTransfer = todaySent.add(amount);
         if (totalAfterTransfer.compareTo(DAILY_SEND_LIMIT) > 0) {
+            // Create fraud alert in separate transaction (won't be rolled back)
+            createDailyLimitFraudAlert(sender, recipientWallet, amount, todaySent, totalAfterTransfer, remark);
+            
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, 
                     "Daily send limit (Rs 50,000) exceeded. Already sent: Rs " + todaySent);
         }
 
         // Check 2: Duplicate transaction (BLOCKING)
-        // For now, duplicate check returns true (no duplicate detected)
-        // Full implementation in TASK-016 with transaction history query
         if (!fraudService.checkDuplicate(senderWallet.getId(), recipientWallet.getId(), amount)) {
+            // Create fraud alert in separate transaction (won't be rolled back)
+            createDuplicateFraudAlert(sender, recipient, recipientWallet, amount, remark);
+            
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, 
                     "Duplicate transfer detected. Please wait before retrying.");
         }
@@ -344,6 +348,136 @@ public class TransactionService {
             this.thisMonthReceived = thisMonthReceived;
             this.thisMonthSentAmount = thisMonthSentAmount;
             this.thisMonthReceivedAmount = thisMonthReceivedAmount;
+        }
+    }
+
+    /**
+     * Create daily limit fraud alert in a SEPARATE transaction.
+     * This ensures the alert is committed even if the main transaction is rolled back.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void createDailyLimitFraudAlert(User sender, Wallet receiverWallet, BigDecimal amount, 
+                                          BigDecimal todaySent, BigDecimal totalAfterTransfer, String remark) {
+        try {
+            // Create FAILED transaction
+            Transaction tempTransaction = transactionRepository.save(Transaction.builder()
+                    .requestId(UUID.randomUUID().toString())
+                    .type(Transaction.Type.P2P_TRANSFER)
+                    .senderWallet(walletRepository.findByUser(sender).orElseThrow())
+                    .receiverWallet(receiverWallet)
+                    .amount(amount)
+                    .status(Transaction.Status.FAILED)
+                    .remark(remark != null ? remark : "Daily limit exceeded")
+                    .settlementDueDate(BusinessDayCalculator.addBusinessDays(LocalDate.now(), 3))
+                    .initiatedAt(LocalDateTime.now())
+                    .settledAt(LocalDateTime.now())
+                    .createdAt(LocalDateTime.now())
+                    .updatedAt(LocalDateTime.now())
+                    .build());
+            
+            // Create fraud alert
+            fraudService.createAlert(tempTransaction, FraudAlert.AlertType.DAILY_LIMIT_EXCEEDED,
+                    "Daily limit exceeded: attempted Rs " + amount + " transfer. Already spent today: Rs " + todaySent);
+            
+            // Notify all admins
+            userRepository.findAllAdminUsers().forEach(admin -> {
+                try {
+                    notificationService.create(
+                        admin.getId(),
+                        Notification.Type.FRAUD_ALERT_HIGH_VALUE,
+                        "Daily Limit Exceeded Alert",
+                        "User " + sender.getEmail() + " attempted to exceed daily limit. " +
+                        "Attempted: Rs " + amount + ", Already spent: Rs " + todaySent + 
+                        ", Total would be: Rs " + totalAfterTransfer + " (Limit: Rs 50,000). " +
+                        "Transaction ID: " + tempTransaction.getId() + ". Please review in the Fraud panel.",
+                        tempTransaction
+                    );
+                } catch (Exception ex) {
+                    // Log but don't fail
+                }
+            });
+            
+            // Notify sender
+            try {
+                notificationService.create(
+                    sender.getId(),
+                    Notification.Type.DAILY_LIMIT_EXCEEDED,
+                    "Daily Limit Exceeded",
+                    "Your transfer of Rs " + amount + " was blocked because it would exceed your daily limit of Rs 50,000. " +
+                    "You have already sent Rs " + todaySent + " today. Please try again tomorrow.",
+                    tempTransaction
+                );
+            } catch (Exception ex) {
+                // Log but don't fail
+            }
+        } catch (Exception e) {
+            // Log the error but don't throw - we still want to block the transaction
+            System.err.println("Failed to create daily limit fraud alert: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Create duplicate transaction fraud alert in a SEPARATE transaction.
+     * This ensures the alert is committed even if the main transaction is rolled back.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void createDuplicateFraudAlert(User sender, User recipient, Wallet recipientWallet, 
+                                         BigDecimal amount, String remark) {
+        try {
+            // Create FAILED transaction
+            Transaction tempTransaction = transactionRepository.save(Transaction.builder()
+                    .requestId(UUID.randomUUID().toString())
+                    .type(Transaction.Type.P2P_TRANSFER)
+                    .senderWallet(walletRepository.findByUser(sender).orElseThrow())
+                    .receiverWallet(recipientWallet)
+                    .amount(amount)
+                    .status(Transaction.Status.FAILED)
+                    .remark(remark != null ? remark : "Duplicate transaction detected")
+                    .settlementDueDate(BusinessDayCalculator.addBusinessDays(LocalDate.now(), 3))
+                    .initiatedAt(LocalDateTime.now())
+                    .settledAt(LocalDateTime.now())
+                    .createdAt(LocalDateTime.now())
+                    .updatedAt(LocalDateTime.now())
+                    .build());
+            
+            // Create fraud alert
+            fraudService.createAlert(tempTransaction, FraudAlert.AlertType.DUPLICATE_TRANSACTION,
+                    "Duplicate transaction detected: Rs " + amount + " to " + recipient.getEmail() + " within 2 minutes");
+            
+            // Notify all admins
+            userRepository.findAllAdminUsers().forEach(admin -> {
+                try {
+                    notificationService.create(
+                        admin.getId(),
+                        Notification.Type.FRAUD_ALERT_HIGH_VALUE,
+                        "Duplicate Transaction Alert",
+                        "User " + sender.getEmail() + " attempted a duplicate transfer of Rs " + amount + 
+                        " to " + recipient.getEmail() + " within 2 minutes. " +
+                        "Transaction ID: " + tempTransaction.getId() + ". Please review in the Fraud panel.",
+                        tempTransaction
+                    );
+                } catch (Exception ex) {
+                    // Log but don't fail
+                }
+            });
+            
+            // Notify sender
+            try {
+                notificationService.create(
+                    sender.getId(),
+                    Notification.Type.TRANSFER_FAILED,
+                    "Duplicate Transaction Detected",
+                    "Your transfer of Rs " + amount + " to " + recipient.getEmail() + 
+                    " was blocked because a similar transaction was detected within the last 2 minutes. " +
+                    "Please wait before retrying.",
+                    tempTransaction
+                );
+            } catch (Exception ex) {
+                // Log but don't fail
+            }
+        } catch (Exception e) {
+            // Log the error but don't throw - we still want to block the transaction
+            System.err.println("Failed to create duplicate transaction fraud alert: " + e.getMessage());
         }
     }
 }

@@ -134,25 +134,25 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     BigDecimal sumPendingSettlementAmount();
 
     // Admin transaction monitoring queries
-    @Query("SELECT t FROM Transaction t WHERE t.type = :type ORDER BY t.createdAt DESC")
+    @Query("SELECT t FROM Transaction t WHERE t.type = :type")
     Page<Transaction> findAllByType(String type, Pageable pageable);
 
-    @Query("SELECT t FROM Transaction t WHERE t.status = :status ORDER BY t.createdAt DESC")
+    @Query("SELECT t FROM Transaction t WHERE t.status = :status")
     Page<Transaction> findAllByStatus(String status, Pageable pageable);
 
-    @Query("SELECT t FROM Transaction t WHERE t.amount >= :minAmount AND t.amount <= :maxAmount ORDER BY t.createdAt DESC")
+    @Query("SELECT t FROM Transaction t WHERE t.amount >= :minAmount AND t.amount <= :maxAmount")
     Page<Transaction> findByAmountRange(BigDecimal minAmount, BigDecimal maxAmount, Pageable pageable);
 
-    @Query("SELECT t FROM Transaction t WHERE DATE(t.createdAt) >= :startDate AND DATE(t.createdAt) <= :endDate ORDER BY t.createdAt DESC")
+    @Query("SELECT t FROM Transaction t WHERE DATE(t.createdAt) >= :startDate AND DATE(t.createdAt) <= :endDate")
     Page<Transaction> findByDateRange(LocalDate startDate, LocalDate endDate, Pageable pageable);
 
-    @Query("SELECT t FROM Transaction t WHERE t.type = :type AND t.status = :status ORDER BY t.createdAt DESC")
+    @Query("SELECT t FROM Transaction t WHERE t.type = :type AND t.status = :status")
     Page<Transaction> findByTypeAndStatus(String type, String status, Pageable pageable);
 
-    @Query("SELECT t FROM Transaction t WHERE t.type = :type AND t.status = :status AND t.amount >= :minAmount AND t.amount <= :maxAmount ORDER BY t.createdAt DESC")
+    @Query("SELECT t FROM Transaction t WHERE t.type = :type AND t.status = :status AND t.amount >= :minAmount AND t.amount <= :maxAmount")
     Page<Transaction> findByTypeStatusAndAmountRange(String type, String status, BigDecimal minAmount, BigDecimal maxAmount, Pageable pageable);
 
-    @Query("SELECT t FROM Transaction t WHERE t.type = :type AND t.status = :status AND DATE(t.createdAt) >= :startDate AND DATE(t.createdAt) <= :endDate ORDER BY t.createdAt DESC")
+    @Query("SELECT t FROM Transaction t WHERE t.type = :type AND t.status = :status AND DATE(t.createdAt) >= :startDate AND DATE(t.createdAt) <= :endDate")
     Page<Transaction> findByTypeStatusAndDateRange(String type, String status, LocalDate startDate, LocalDate endDate, Pageable pageable);
 
     // Settlement queue queries
@@ -183,7 +183,28 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.status = 'PENDING' AND t.settlementDueDate > :today")
     BigDecimal sumFuturePendingAmount(LocalDate today);
 
+    // Enhanced admin transaction monitoring queries with all filter combinations
+    @Query("SELECT t FROM Transaction t WHERE t.type = :type AND t.status = :status AND t.amount >= :minAmount AND t.amount <= :maxAmount AND DATE(t.createdAt) >= :startDate AND DATE(t.createdAt) <= :endDate")
+    Page<Transaction> findByAllFilters(String type, String status, BigDecimal minAmount, BigDecimal maxAmount, LocalDate startDate, LocalDate endDate, Pageable pageable);
 
+    @Query("SELECT t FROM Transaction t WHERE t.status = :status AND t.amount >= :minAmount AND t.amount <= :maxAmount AND DATE(t.createdAt) >= :startDate AND DATE(t.createdAt) <= :endDate")
+    Page<Transaction> findByStatusAmountAndDateRange(String status, BigDecimal minAmount, BigDecimal maxAmount, LocalDate startDate, LocalDate endDate, Pageable pageable);
 
+    @Query("SELECT t FROM Transaction t WHERE t.type = :type AND t.amount >= :minAmount AND t.amount <= :maxAmount AND DATE(t.createdAt) >= :startDate AND DATE(t.createdAt) <= :endDate")
+    Page<Transaction> findByTypeAmountAndDateRange(String type, BigDecimal minAmount, BigDecimal maxAmount, LocalDate startDate, LocalDate endDate, Pageable pageable);
 
+    @Query("SELECT t FROM Transaction t WHERE t.type = :type AND t.amount >= :minAmount AND t.amount <= :maxAmount")
+    Page<Transaction> findByTypeAndAmountRange(String type, BigDecimal minAmount, BigDecimal maxAmount, Pageable pageable);
+
+    @Query("SELECT t FROM Transaction t WHERE t.type = :type AND DATE(t.createdAt) >= :startDate AND DATE(t.createdAt) <= :endDate")
+    Page<Transaction> findByTypeAndDateRange(String type, LocalDate startDate, LocalDate endDate, Pageable pageable);
+
+    @Query("SELECT t FROM Transaction t WHERE t.status = :status AND t.amount >= :minAmount AND t.amount <= :maxAmount")
+    Page<Transaction> findByStatusAndAmountRange(String status, BigDecimal minAmount, BigDecimal maxAmount, Pageable pageable);
+
+    @Query("SELECT t FROM Transaction t WHERE t.status = :status AND DATE(t.createdAt) >= :startDate AND DATE(t.createdAt) <= :endDate")
+    Page<Transaction> findByStatusAndDateRange(String status, LocalDate startDate, LocalDate endDate, Pageable pageable);
+
+    @Query("SELECT t FROM Transaction t WHERE t.amount >= :minAmount AND t.amount <= :maxAmount AND DATE(t.createdAt) >= :startDate AND DATE(t.createdAt) <= :endDate")
+    Page<Transaction> findByAmountAndDateRange(BigDecimal minAmount, BigDecimal maxAmount, LocalDate startDate, LocalDate endDate, Pageable pageable);
 }

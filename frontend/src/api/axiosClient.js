@@ -29,6 +29,18 @@ axiosClient.interceptors.response.use(
       }
       // For auth endpoints, let the error reach the catch block
     }
+    
+    // Attach user-friendly error message to the error object
+    if (error.response?.data?.message) {
+      error.userMessage = error.response.data.message;
+    } else if (error.response?.data?.error) {
+      error.userMessage = error.response.data.error;
+    } else if (error.message) {
+      error.userMessage = error.message;
+    } else {
+      error.userMessage = 'An unexpected error occurred. Please try again.';
+    }
+    
     return Promise.reject(error);
   }
 );

@@ -12,6 +12,7 @@ export const unfreezeWallet = (userId) => axiosClient.put("/admin/users/" + user
 
 // Transactions
 export const getAdminTransactions = (params) => axiosClient.get("/admin/transactions", { params });
+export const getAdminTransactionDetail = (transactionId) => axiosClient.get("/admin/transactions/" + transactionId);
 export const getTransactionDetail = (transactionId) => axiosClient.get("/admin/transactions/" + transactionId);
 
 // Settlement

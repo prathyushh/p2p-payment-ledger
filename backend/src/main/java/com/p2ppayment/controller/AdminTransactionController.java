@@ -35,7 +35,7 @@ public class AdminTransactionController {
 
     /**
      * GET /api/admin/transactions
-     * List all transactions with optional filters (type, status, amount range, date range).
+     * List all transactions with optional filters (type, status, amount range, date range) and sorting.
      */
     @GetMapping
     public ResponseEntity<Page<TransactionResponse>> listTransactions(
@@ -45,33 +45,113 @@ public class AdminTransactionController {
             @RequestParam(required = false) BigDecimal maxAmount,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
+            @RequestParam(required = false, defaultValue = "initiatedAt") String sortBy,
+            @RequestParam(required = false, defaultValue = "desc") String sortDir,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         
-        Pageable pageable = PageRequest.of(page, Math.min(size, 100));
+        // Map frontend sort field names to entity field names
+        String entitySortField = mapSortField(sortBy);
+        
+        // Create pageable with sorting
+        org.springframework.data.domain.Sort.Direction direction = 
+            sortDir.equalsIgnoreCase("asc") ? 
+            org.springframework.data.domain.Sort.Direction.ASC : 
+            org.springframework.data.domain.Sort.Direction.DESC;
+        
+        Pageable pageable = PageRequest.of(
+            page, 
+            Math.min(size, 100),
+            org.springframework.data.domain.Sort.by(direction, entitySortField)
+        );
+        
         Page<Transaction> transactions;
 
         try {
-            // Apply filters
-            if (type != null && status != null && minAmount != null && maxAmount != null && startDate != null && endDate != null) {
-                transactions = transactionRepository.findByTypeStatusAndAmountRange(type, status, minAmount, maxAmount, pageable);
-            } else if (type != null && status != null && startDate != null && endDate != null) {
-                LocalDate start = LocalDate.parse(startDate);
-                LocalDate end = LocalDate.parse(endDate);
-                transactions = transactionRepository.findByTypeStatusAndDateRange(type, status, start, end, pageable);
-            } else if (type != null && status != null) {
+            // Parse date range if provided
+            LocalDate start = null;
+            LocalDate end = null;
+            if (startDate != null && !startDate.isEmpty()) {
+                start = LocalDate.parse(startDate);
+            }
+            if (endDate != null && !endDate.isEmpty()) {
+                end = LocalDate.parse(endDate);
+            }
+
+            // Build query dynamically based on provided filters
+            boolean hasType = type != null && !type.isEmpty();
+            boolean hasStatus = status != null && !status.isEmpty();
+            boolean hasAmountRange = minAmount != null && maxAmount != null;
+            boolean hasDateRange = start != null && end != null;
+
+            // All four filters
+            if (hasType && hasStatus && hasAmountRange && hasDateRange) {
+                transactions = transactionRepository.findByAllFilters(
+                    type, status, minAmount, maxAmount, start, end, pageable);
+            }
+            // Type + Status + Date
+            else if (hasType && hasStatus && hasDateRange) {
+                transactions = transactionRepository.findByTypeStatusAndDateRange(
+                    type, status, start, end, pageable);
+            }
+            // Type + Status + Amount
+            else if (hasType && hasStatus && hasAmountRange) {
+                transactions = transactionRepository.findByTypeStatusAndAmountRange(
+                    type, status, minAmount, maxAmount, pageable);
+            }
+            // Status + Amount + Date
+            else if (hasStatus && hasAmountRange && hasDateRange) {
+                transactions = transactionRepository.findByStatusAmountAndDateRange(
+                    status, minAmount, maxAmount, start, end, pageable);
+            }
+            // Type + Amount + Date
+            else if (hasType && hasAmountRange && hasDateRange) {
+                transactions = transactionRepository.findByTypeAmountAndDateRange(
+                    type, minAmount, maxAmount, start, end, pageable);
+            }
+            // Type + Status
+            else if (hasType && hasStatus) {
                 transactions = transactionRepository.findByTypeAndStatus(type, status, pageable);
-            } else if (minAmount != null && maxAmount != null) {
-                transactions = transactionRepository.findByAmountRange(minAmount, maxAmount, pageable);
-            } else if (startDate != null && endDate != null) {
-                LocalDate start = LocalDate.parse(startDate);
-                LocalDate end = LocalDate.parse(endDate);
-                transactions = transactionRepository.findByDateRange(start, end, pageable);
-            } else if (type != null) {
+            }
+            // Type + Amount
+            else if (hasType && hasAmountRange) {
+                transactions = transactionRepository.findByTypeAndAmountRange(
+                    type, minAmount, maxAmount, pageable);
+            }
+            // Type + Date
+            else if (hasType && hasDateRange) {
+                transactions = transactionRepository.findByTypeAndDateRange(type, start, end, pageable);
+            }
+            // Status + Amount
+            else if (hasStatus && hasAmountRange) {
+                transactions = transactionRepository.findByStatusAndAmountRange(
+                    status, minAmount, maxAmount, pageable);
+            }
+            // Status + Date
+            else if (hasStatus && hasDateRange) {
+                transactions = transactionRepository.findByStatusAndDateRange(
+                    status, start, end, pageable);
+            }
+            // Amount + Date
+            else if (hasAmountRange && hasDateRange) {
+                transactions = transactionRepository.findByAmountAndDateRange(
+                    minAmount, maxAmount, start, end, pageable);
+            }
+            // Single filters
+            else if (hasType) {
                 transactions = transactionRepository.findAllByType(type, pageable);
-            } else if (status != null) {
+            }
+            else if (hasStatus) {
                 transactions = transactionRepository.findAllByStatus(status, pageable);
-            } else {
+            }
+            else if (hasAmountRange) {
+                transactions = transactionRepository.findByAmountRange(minAmount, maxAmount, pageable);
+            }
+            else if (hasDateRange) {
+                transactions = transactionRepository.findByDateRange(start, end, pageable);
+            }
+            // No filters
+            else {
                 transactions = transactionRepository.findAll(pageable);
             }
         } catch (Exception e) {
@@ -136,6 +216,21 @@ public class AdminTransactionController {
         );
 
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Map frontend sort field names to entity field names.
+     */
+    private String mapSortField(String frontendField) {
+        return switch (frontendField) {
+            case "createdAt" -> "initiatedAt";
+            case "settlementDueDate" -> "settlementDueDate";
+            case "amount" -> "amount";
+            case "type" -> "type";
+            case "status" -> "status";
+            case "id" -> "id";
+            default -> "initiatedAt";
+        };
     }
 
     /**

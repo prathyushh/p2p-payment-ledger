@@ -22,6 +22,7 @@ public class AutoReloadService {
     private final TransactionRepository transactionRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
     private final SimulatedAccountTransactionRepository simulatedAccountTransactionRepository;
+    private final NotificationService notificationService;
     private final JdbcTemplate jdbcTemplate;
 
     public AutoReloadService(AutoReloadSettingsRepository autoReloadSettingsRepository,
@@ -31,6 +32,7 @@ public class AutoReloadService {
                             TransactionRepository transactionRepository,
                             LedgerEntryRepository ledgerEntryRepository,
                             SimulatedAccountTransactionRepository simulatedAccountTransactionRepository,
+                            NotificationService notificationService,
                             JdbcTemplate jdbcTemplate) {
         this.autoReloadSettingsRepository = autoReloadSettingsRepository;
         this.walletRepository = walletRepository;
@@ -39,6 +41,7 @@ public class AutoReloadService {
         this.transactionRepository = transactionRepository;
         this.ledgerEntryRepository = ledgerEntryRepository;
         this.simulatedAccountTransactionRepository = simulatedAccountTransactionRepository;
+        this.notificationService = notificationService;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -202,11 +205,15 @@ public class AutoReloadService {
 
             // Validate account still exists and is active
             if (account == null || !account.getIsActive()) {
+                createFailedReloadRecord(wallet, account, reloadAmount, 
+                    "Simulated bank account is " + (account == null ? "not found" : "inactive"));
                 return;
             }
 
             // Validate sufficient balance in simulated account
             if (account.getSimulatedBalance().compareTo(reloadAmount) < 0) {
+                createFailedReloadRecord(wallet, account, reloadAmount, 
+                    "Insufficient balance in bank account. Required: ₹" + reloadAmount + ", Available: ₹" + account.getSimulatedBalance());
                 return;
             }
 
@@ -265,6 +272,15 @@ public class AutoReloadService {
                     .createdAt(LocalDateTime.now())
                     .build();
             ledgerEntryRepository.save(ledgerEntry);
+            
+            // Step 6: Create success notification
+            notificationService.create(
+                wallet.getUser().getId(),
+                Notification.Type.AUTO_RELOAD_SUCCESS,
+                "Auto Reload Successful",
+                "Your wallet has been automatically reloaded with ₹" + reloadAmount + " from " + account.getAccountIdentifier(),
+                transaction
+            );
 
         } finally {
             // Always release lock, even on failure
@@ -273,5 +289,54 @@ public class AutoReloadService {
                     walletId
             );
         }
+    }
+
+    /**
+     * Create records for a failed auto reload attempt
+     * This runs in a separate transaction to ensure failure is recorded even if parent transaction fails
+     */
+    @Transactional
+    private void createFailedReloadRecord(Wallet wallet, SimulatedBankAccount account, BigDecimal amount, String failureReason) {
+        // Create FAILED transaction record
+        String requestId = UUID.randomUUID().toString();
+        Transaction transaction = Transaction.builder()
+                .requestId(requestId)
+                .type(Transaction.Type.AUTO_RELOAD)
+                .receiverWallet(wallet)
+                .senderWallet(null)
+                .amount(amount)
+                .status(Transaction.Status.FAILED)
+                .simulatedAccount(account)
+                .initiatedAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+        transaction = transactionRepository.save(transaction);
+
+        // Create failed simulated account transaction if account exists
+        if (account != null) {
+            SimulatedAccountTransaction accountTxn = SimulatedAccountTransaction.builder()
+                    .simulatedAccount(account)
+                    .operationType("AUTO_RELOAD")
+                    .amount(amount)
+                    .direction("DEBIT")
+                    .balanceBefore(account.getSimulatedBalance())
+                    .balanceAfter(account.getSimulatedBalance())  // No change since failed
+                    .relatedTransactionId(transaction.getId())
+                    .outcome("FAILED")
+                    .notes(failureReason)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            simulatedAccountTransactionRepository.save(accountTxn);
+        }
+
+        // Create notification to user
+        notificationService.create(
+            wallet.getUser().getId(),
+            Notification.Type.AUTO_RELOAD_FAILED,
+            "Auto Reload Failed",
+            failureReason + ". Please add funds to your bank account or adjust your auto reload settings.",
+            transaction
+        );
     }
 }

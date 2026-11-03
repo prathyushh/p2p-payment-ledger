@@ -60,6 +60,11 @@ public class AutoReloadController {
                 request.reloadAmount()
         );
 
+        // If auto reload was just enabled, check if we need to reload immediately
+        if (request.isEnabled() != null && request.isEnabled()) {
+            autoReloadService.attemptReload(settings.getWallet().getId(), false);
+        }
+
         AutoReloadResponse response = toAutoReloadResponse(settings);
         return ResponseEntity.ok(response);
     }

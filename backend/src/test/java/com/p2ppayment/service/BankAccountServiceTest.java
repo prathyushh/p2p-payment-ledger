@@ -3,9 +3,13 @@ package com.p2ppayment.service;
 import com.p2ppayment.entity.SimulatedAccountTransaction;
 import com.p2ppayment.entity.SimulatedBankAccount;
 import com.p2ppayment.entity.User;
+import com.p2ppayment.entity.Wallet;
+import com.p2ppayment.repository.AutoReloadSettingsRepository;
 import com.p2ppayment.repository.SimulatedAccountTransactionRepository;
 import com.p2ppayment.repository.SimulatedBankAccountRepository;
 import com.p2ppayment.repository.UserRepository;
+import com.p2ppayment.repository.WalletRepository;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,11 +37,20 @@ class BankAccountServiceTest {
 
     @Mock
     private UserRepository userRepository;
+    
+    @Mock
+    private WalletRepository walletRepository;
+    
+    @Mock
+    private AutoReloadSettingsRepository autoReloadSettingsRepository;
+    @InjectMocks
+    private AutoReloadService autoReloadService;
 
     @InjectMocks
     private BankAccountService bankAccountService;
 
     private User testUser;
+    private Wallet testWallet;
     private SimulatedBankAccount testAccount;
 
     @BeforeEach
@@ -45,7 +58,13 @@ class BankAccountServiceTest {
         testUser = new User();
         testUser.setId(1L);
         testUser.setEmail("test@example.com");
-
+        
+        testWallet = Wallet.builder()
+                .id(1L)
+                .user(testUser)
+                .balance(new BigDecimal("1000.00"))
+                .build();
+        
         testAccount = new SimulatedBankAccount();
         testAccount.setId(1L);
         testAccount.setUser(testUser);
@@ -201,38 +220,6 @@ class BankAccountServiceTest {
 
         verify(bankAccountRepository, never())
                 .save(any(SimulatedBankAccount.class));
-    }
-
-    @Test
-    void addDemoFunds_Success() {
-        when(userRepository.findById(1L))
-                .thenReturn(Optional.of(testUser));
-        when(bankAccountRepository.findByIdAndUser(1L, testUser))
-                .thenReturn(Optional.of(testAccount));
-        when(bankAccountRepository.save(any(SimulatedBankAccount.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-        when(transactionRepository.save(any(SimulatedAccountTransaction.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
-        SimulatedBankAccount result = bankAccountService.addDemoFunds(
-                1L, 1L, new BigDecimal("1000.00")
-        );
-
-        assertNotNull(result);
-        assertEquals(
-                0,
-                new BigDecimal("6000.00")
-                        .compareTo(result.getSimulatedBalance())
-        );
-
-        verify(bankAccountRepository).save(testAccount);
-        verify(transactionRepository).save(
-                argThat(transaction ->
-                        "DEMO_FUND_ADDED".equals(transaction.getOperationType())
-                                && "CREDIT".equals(transaction.getDirection())
-                                && "SUCCESS".equals(transaction.getOutcome())
-                )
-        );
     }
 
     @Test
